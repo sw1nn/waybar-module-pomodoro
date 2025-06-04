@@ -3,11 +3,15 @@ use std::{
     io::{BufReader, Error, Read, Write},
     os::unix::net::{UnixListener, UnixStream},
     path::{Path, PathBuf},
-    sync::mpsc::{Receiver, Sender},
+    sync::{
+        mpsc::{Receiver, Sender},
+        LazyLock,
+    },
     thread,
 };
 
 use notify_rust::Notification;
+use regex::Regex;
 use rodio::{Decoder, OutputStream, Sink};
 use tracing::{debug, info, warn};
 use xdg::BaseDirectories;
@@ -24,6 +28,10 @@ use super::{
     cache,
     timer::{CycleType, Timer},
 };
+
+// Shared regex for matching socket filenames with trailing numbers
+static SOCKET_NUMBER_REGEX: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^module(\d+)$").unwrap());
 
 pub fn play_sound(file_path: Option<&str>) {
     debug!("play_sound called with file_path: {:?}", file_path);
@@ -139,12 +147,27 @@ fn process_message(state: &mut Timer, message: &str) {
     if let Ok(msg) = Message::decode(message) {
         debug!("Decoded message: {:?}", msg);
         match msg {
-            Message::SetWork(value) => state.set_time(CycleType::Work, value),
-            Message::SetShort(value) => state.set_time(CycleType::ShortBreak, value),
-            Message::SetLong(value) => state.set_time(CycleType::LongBreak, value),
-            Message::AddDeltaWork(delta) => state.add_delta_time(CycleType::Work, delta),
-            Message::AddDeltaShort(delta) => state.add_delta_time(CycleType::ShortBreak, delta),
-            Message::AddDeltaLong(delta) => state.add_delta_time(CycleType::LongBreak, delta),
+            Message::SetWork { value, is_delta } => {
+                if is_delta {
+                    state.add_delta_time(CycleType::Work, value)
+                } else {
+                    state.set_time(CycleType::Work, value as u16)
+                }
+            }
+            Message::SetShort { value, is_delta } => {
+                if is_delta {
+                    state.add_delta_time(CycleType::ShortBreak, value)
+                } else {
+                    state.set_time(CycleType::ShortBreak, value as u16)
+                }
+            }
+            Message::SetLong { value, is_delta } => {
+                if is_delta {
+                    state.add_delta_time(CycleType::LongBreak, value)
+                } else {
+                    state.set_time(CycleType::LongBreak, value as u16)
+                }
+            }
         }
     } else {
         debug!("Message decode failed, trying raw commands");
@@ -175,11 +198,23 @@ fn process_message(state: &mut Timer, message: &str) {
     }
 }
 
+/// Extract socket number from a socket path by looking only at the filename
+/// Only matches numbers at the end of the base filename (before extension)
+fn extract_socket_number(socket_path: &str) -> i32 {
+    std::path::Path::new(socket_path)
+        .file_stem() // without extension
+        .and_then(|name| name.to_str())
+        .and_then(|name| {
+            SOCKET_NUMBER_REGEX
+                .captures(name)
+                .and_then(|caps| caps.get(1))
+                .and_then(|m| m.as_str().parse::<i32>().ok())
+        })
+        .unwrap_or(0)
+}
+
 fn handle_client(rx: Receiver<String>, socket_path: String, config: Config) {
-    let socket_nr = socket_path
-        .chars()
-        .filter_map(|c| c.to_digit(10))
-        .fold(0, |acc, digit| acc * 10 + digit) as i32;
+    let socket_nr = extract_socket_number(&socket_path);
 
     let mut state = Timer::new(
         config.work_time,
@@ -275,6 +310,35 @@ pub fn spawn_module(socket_path: &str, config: Config) {
             Err(err) => warn!("Socket error: {}", err),
         }
     }
+}
+
+/// Find the next available instance number by looking at existing sockets
+pub fn find_next_instance_number(binary_name: &str) -> u16 {
+    let sockets = get_existing_sockets(binary_name);
+    
+    // If no sockets exist, return 0 for the first instance
+    if sockets.is_empty() {
+        return 0;
+    }
+
+    let max_instance = sockets
+        .iter()
+        .filter_map(|socket| {
+            socket
+                .file_stem() // Get filename without extension
+                .and_then(|name| name.to_str())
+                .and_then(|name| {
+                    SOCKET_NUMBER_REGEX
+                        .captures(name)
+                        .and_then(|caps| caps.get(1))
+                        .and_then(|m| m.as_str().parse::<u16>().ok())
+                })
+        })
+        .max()
+        .unwrap_or(0);
+
+    // Return N+1, but ensure we don't overflow (though unlikely with u16)
+    max_instance.saturating_add(1)
 }
 
 pub fn get_existing_sockets(binary_name: &str) -> Vec<PathBuf> {
@@ -444,5 +508,53 @@ mod tests {
 
         delete_socket(socket_path);
         assert!(!std::path::Path::new(socket_path).exists());
+    }
+
+    #[test]
+    fn test_find_next_instance_number() {
+        // Note: This test is limited because find_next_instance_number uses XDG directories
+        // In a real test environment, we'd need to mock the XDG base directories
+
+        // For now, we can at least test the logic by creating a separate test
+        // that tests the extraction of numbers from filenames
+    }
+
+    #[test]
+    fn test_extract_socket_number() {
+        // Test with just filename - valid module names
+        assert_eq!(extract_socket_number("module0.socket"), 0);
+        assert_eq!(extract_socket_number("module1.socket"), 1);
+        assert_eq!(extract_socket_number("module123.socket"), 123);
+
+        // Test with full paths
+        assert_eq!(
+            extract_socket_number("/run/user/1000/waybar-module-pomodoro/module0.socket"),
+            0
+        );
+        assert_eq!(extract_socket_number("/var/tmp/module42.socket"), 42);
+
+        // Test with paths containing numbers
+        assert_eq!(
+            extract_socket_number("/run/user/1000/waybar-module-pomodoro/module5.socket"),
+            5
+        );
+        assert_eq!(
+            extract_socket_number("/home/user123/sockets/module7.socket"),
+            7
+        );
+
+        // Test edge cases - these should all return 0 because they don't match the pattern
+        assert_eq!(extract_socket_number("module.socket"), 0); // No number at end
+        assert_eq!(extract_socket_number("custom99name88.socket"), 0); // Not "module" prefix
+        assert_eq!(extract_socket_number("99module.socket"), 0); // Wrong pattern
+        assert_eq!(extract_socket_number("/path/to/nowhere"), 0); // No extension
+        assert_eq!(extract_socket_number(""), 0); // Empty string
+
+        // Test various filenames that don't match the pattern
+        assert_eq!(extract_socket_number("socket1.socket"), 0); // Wrong prefix
+        assert_eq!(extract_socket_number("my-socket-15.socket"), 0); // Wrong prefix
+        assert_eq!(extract_socket_number("test_socket_999.socket"), 0); // Wrong prefix
+        assert_eq!(extract_socket_number("modules123.socket"), 0); // Wrong prefix (plural)
+        assert_eq!(extract_socket_number("module_123.socket"), 0); // Has underscore
     }
 }

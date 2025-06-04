@@ -2,16 +2,17 @@
 name = "waybar-module-pomodoro"
 version = "0.2.1"
 edition = "2021"
+default-run = "waybar-module-pomodoro"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [[bin]]
 name = "waybar-module-pomodoro"
-path = "src/main.rs"
+path = "src/bin/waybar_module.rs"
 
 [[bin]]
 name = "waybar-module-pomodoro-ctl"
-path = "src/bin/waybar-module-pomodoro-ctl.rs"
+path = "src/bin/waybar_module_ctl.rs"
 
 [dependencies]
 clap = { version = "4.0", features = ["derive"] }
@@ -24,5 +25,10 @@ dirs = "6.0"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing-appender = "0.2"
+tracing-journald = "0.3"
 xdg = "2.5"
-rodio = { version = "0.19", default-features = false, features = ["mp3", "wav", "vorbis"] }
+rodio = { version = "0.20", default-features = false, features = [
+  "mp3",
+  "wav",
+  "vorbis",
+] }
