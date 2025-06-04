@@ -7,6 +7,8 @@ use crate::{
 
 use super::module::send_notification;
 
+use tracing::debug;
+
 #[derive(Debug)]
 pub enum CycleType {
     Work,
@@ -152,6 +154,8 @@ impl Timer {
                     },
                     config,
                 );
+            } else {
+                debug!(socket_nr = self.socket_nr, "didn't send a notification");
             }
         }
     }
