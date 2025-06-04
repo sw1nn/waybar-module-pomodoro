@@ -1,6 +1,6 @@
 pkgname=waybar-module-pomodoro-git
 _pkgname=waybar-module-pomodoro
-pkgver=r119.ef2e91e
+pkgver=r123.226a207
 pkgrel=1
 pkgdesc='A waybar module to show a pomodoro timer'
 arch=('x86_64')
@@ -11,8 +11,8 @@ makedepends=('rust')
 source=("${pkgname}::git+https://github.com/sw1nn/waybar-module-pomodoro.git")
 sha256sums=('SKIP')
 provides=('waybar-module-pomodoro')
-
 conflicts=('waybar-module-pomodoro')
+options=(strip !debug)
 
 pkgver() {
   cd ${pkgname}
