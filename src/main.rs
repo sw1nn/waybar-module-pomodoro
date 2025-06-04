@@ -1,69 +1,75 @@
-use models::config::{parse_set_operations, Config, OPERATIONS};
-use services::server::{get_existing_sockets, send_message_socket, spawn_server};
+use clap::Parser;
+use cli::ModuleCli;
+use models::config::Config;
+use services::module::{send_message_socket, spawn_module};
 use signal_hook::{
     consts::{SIGHUP, SIGINT, SIGTERM},
     iterator::Signals,
 };
-use std::{env, thread};
-use utils::consts::{
-    BREAK_ICON, LONG_BREAK_TIME, MINUTE, PAUSE_ICON, PLAY_ICON, SHORT_BREAK_TIME, WORK_ICON,
-    WORK_TIME,
-};
+use std::thread;
+use tracing::info;
+use tracing_subscriber::EnvFilter;
+use xdg::BaseDirectories;
 
+mod cli;
 mod models;
 mod services;
 mod utils;
 
+fn setup_tracing(log_file: Option<std::path::PathBuf>) {
+    // Server: log to file
+    let log_path = log_file.unwrap_or_else(|| std::path::PathBuf::from("/tmp/waybar-pomodoro.log"));
+
+    // Extract directory and filename
+    let log_dir = log_path
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("/tmp"));
+    let log_filename = log_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("waybar-pomodoro.log");
+
+    let file_appender = tracing_appender::rolling::daily(log_dir, log_filename);
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::fmt()
+        .with_writer(non_blocking)
+        .with_env_filter(
+            EnvFilter::from_default_env()
+                .add_directive("waybar_module_pomodoro=debug".parse().unwrap()),
+        )
+        .init();
+
+    // Prevent the guard from being dropped
+    std::mem::forget(_guard);
+}
+
 fn main() -> std::io::Result<()> {
-    let options = env::args().collect::<Vec<String>>();
-    if options.contains(&"--help".to_string()) || options.contains(&"-h".to_string()) {
-        print_help();
-        return Ok(());
-    }
+    let cli = ModuleCli::parse();
 
-    if options.contains(&"--version".to_string()) || options.contains(&"-v".to_string()) {
-        let version: &str = env!("CARGO_PKG_VERSION");
-        println!("Ver: {}", version);
-        return Ok(());
-    }
+    setup_tracing(cli.log_file.clone());
 
-    let config = Config::from_options(options);
+    // Debug output of CLI arguments
+    tracing::debug!("Parsed CLI arguments: {:#?}", cli);
 
-    let mut sockets = get_existing_sockets(&config.binary_name);
-    let socket_path: String = format!(
-        "{}/{}{}.socket",
-        env::temp_dir().display(),
-        config.binary_name,
-        sockets.len(),
-    );
+    let config = Config::from_module_cli(&cli);
 
-    let operation = env::args()
-        .filter(|x| OPERATIONS.contains(&x.as_str()))
-        .collect::<Vec<String>>();
+    // Use XDG runtime directory for socket
+    let xdg_dirs = BaseDirectories::with_prefix("waybar-module-pomodoro")
+        .expect("Failed to get XDG base directories");
 
-    let set_operation = parse_set_operations(env::args().collect::<Vec<String>>());
+    let socket_path = xdg_dirs
+        .place_runtime_file("module.socket")
+        .expect("Failed to create socket path in runtime directory")
+        .to_string_lossy()
+        .to_string();
 
-    if operation.is_empty() && set_operation.is_empty() {
-        sockets.push(socket_path.clone());
-        process_signals(socket_path.clone());
-        spawn_server(&socket_path, config);
-        return Ok(());
-    }
+    info!("Starting module");
+    info!("Socket path: {}", socket_path);
 
-    for socket in sockets {
-        if !operation.is_empty() {
-            match send_message_socket(&socket, &operation[0]) {
-                Ok(_) => {}
-                Err(_) => println!("warn: failed to connect to {}", socket),
-            };
-        }
-        for msg in &set_operation {
-            match send_message_socket(&socket, &msg.encode()) {
-                Ok(_) => {}
-                Err(_) => println!("warn: failed to connect to {}", socket),
-            };
-        }
-    }
+    process_signals(socket_path.clone());
+    spawn_module(&socket_path, config);
+
     Ok(())
 }
 
@@ -80,48 +86,7 @@ fn process_signals(socket_path: String) {
     let mut signals = Signals::new([SIGINT, SIGTERM, SIGHUP]).unwrap();
     thread::spawn(move || {
         for _ in signals.forever() {
-            send_message_socket(&socket_path, "exit").expect("unable to send message to server");
+            send_message_socket(&socket_path, "exit").expect("unable to send message to module");
         }
     });
-}
-
-fn print_help() {
-    println!(
-        r#"usage: waybar-module-pomodoro [options] [operation]
-    options:
-        -h, --help                  Prints this help message
-        -v, --version               Prints the version string
-        -w, --work <value>          Sets how long a work cycle is, in minutes. default: {}
-        -s, --shortbreak <value>    Sets how long a short break is, in minutes. default: {}
-        -l, --longbreak <value>     Sets how long a long break is, in minutes. default: {}
-
-        -p, --play <value>          Sets custom play icon/text. default: {}
-        -a, --pause <value>         Sets custom pause icon/text. default: {}
-        -o, --work-icon <value>     Sets custom work icon/text. default: {}
-        -b, --break-icon <value>    Sets custom break icon/text. default: {}
-
-        --no-icons                  Disable the pause/play icon
-        --no-work-icons             Disable the work/break icon
-
-        --autow                     Starts a work cycle automatically after a break
-        --autob                     Starts a break cycle automatically after work
-        --persist                   Persist timer state between sessions
-
-    operations:
-        toggle                      Toggles the timer
-        start                       Start the timer
-        stop                        Stop the timer
-        reset                       Reset timer to initial state
-
-        set-work <value>            Set new work time
-        set-short <value>           Set new short break time
-        set-long <value>            Set new long break time"#,
-        WORK_TIME / MINUTE,
-        SHORT_BREAK_TIME / MINUTE,
-        LONG_BREAK_TIME / MINUTE,
-        PLAY_ICON,
-        PAUSE_ICON,
-        WORK_ICON,
-        BREAK_ICON,
-    );
 }
