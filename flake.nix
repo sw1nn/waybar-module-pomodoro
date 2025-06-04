@@ -27,9 +27,11 @@
             rust-analyzer
             cargo-nextest
             bacon
+            taplo
 
             clang
             pkg-config
+            alsa-lib
           ];
           buildInputs = with pkgs; [ 
               (rustVersion.override { extensions = [ "rust-src" ]; }) 
