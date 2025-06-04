@@ -322,7 +322,7 @@ pub fn spawn_module(socket_path: &str, config: Config) {
 /// Find the next available instance number by looking at existing sockets
 pub fn find_next_instance_number(binary_name: &str) -> u16 {
     let sockets = get_existing_sockets(binary_name);
-    
+
     // If no sockets exist, return 0 for the first instance
     if sockets.is_empty() {
         return 0;
@@ -489,24 +489,24 @@ mod tests {
     #[test]
     fn test_process_message_set_current() {
         let mut timer = create_timer();
-        
+
         // Test setting current work time
         timer.current_index = 0;
         let msg = r#"{"SetCurrent":{"value":30,"is_delta":false}}"#;
         process_message(&mut timer, msg);
         assert_eq!(timer.times[0], 30 * 60);
-        
+
         // Test setting current break time
         timer.current_index = 1;
         let msg = r#"{"SetCurrent":{"value":10,"is_delta":false}}"#;
         process_message(&mut timer, msg);
         assert_eq!(timer.times[1], 10 * 60);
-        
+
         // Test delta on current
         let msg = r#"{"SetCurrent":{"value":5,"is_delta":true}}"#;
         process_message(&mut timer, msg);
         assert_eq!(timer.times[1], 15 * 60);
-        
+
         // Test negative delta
         let msg = r#"{"SetCurrent":{"value":-2,"is_delta":true}}"#;
         process_message(&mut timer, msg);

@@ -175,7 +175,7 @@ pub struct ModuleCli {
     /// Enable logging to file or journald
     #[arg(long = "log", value_name = "destination", num_args = 0..=1, default_missing_value = "journald", help = "Enable logging. Optionally specify a log file path. If no path is provided, logs to journald")]
     pub log: Option<LogOption>,
-    
+
     /// Specify instance number (defaults to next available)
     #[arg(short = 'i', long = "instance", value_name = "NUM")]
     pub instance: Option<u16>,

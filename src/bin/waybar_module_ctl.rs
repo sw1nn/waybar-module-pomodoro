@@ -31,14 +31,18 @@ fn main() -> std::io::Result<()> {
     if let Some(instance) = cli.instance {
         let target_socket_name = format!("module{}.socket", instance);
         sockets.retain(|socket| {
-            socket.file_name()
+            socket
+                .file_name()
                 .and_then(|name| name.to_str())
                 .map(|name| name == target_socket_name)
                 .unwrap_or(false)
         });
-        
+
         if sockets.is_empty() {
-            eprintln!("No running waybar-module-pomodoro instance {} found", instance);
+            eprintln!(
+                "No running waybar-module-pomodoro instance {} found",
+                instance
+            );
             return Ok(());
         }
         debug!("Targeting instance {}", instance);
@@ -58,15 +62,16 @@ fn main() -> std::io::Result<()> {
         Operation::Start => "start".to_string(),
         Operation::Stop => "stop".to_string(),
         Operation::Reset => "reset".to_string(),
-        Operation::SetWork { .. } | Operation::SetShort { .. } | Operation::SetLong { .. } | Operation::SetCurrent { .. } => {
-            match cli.operation.to_message() {
-                Ok(msg) => msg.encode(),
-                Err(e) => {
-                    eprintln!("Error parsing command: {}", e);
-                    return Ok(());
-                }
+        Operation::SetWork { .. }
+        | Operation::SetShort { .. }
+        | Operation::SetLong { .. }
+        | Operation::SetCurrent { .. } => match cli.operation.to_message() {
+            Ok(msg) => msg.encode(),
+            Err(e) => {
+                eprintln!("Error parsing command: {}", e);
+                return Ok(());
             }
-        }
+        },
     };
 
     let mut success_count = 0;

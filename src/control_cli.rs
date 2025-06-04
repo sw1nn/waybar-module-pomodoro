@@ -36,7 +36,7 @@ pub struct ControlCli {
     /// Target a specific instance number (e.g., 0, 1, 2)
     #[arg(short = 'i', long = "instance", value_name = "NUM")]
     pub instance: Option<u16>,
-    
+
     #[command(subcommand)]
     pub operation: Operation,
 }
@@ -88,24 +88,60 @@ impl Operation {
 fn time_value_to_message(value: &TimeValue, cycle_type: &str) -> Result<Message, String> {
     match value {
         TimeValue::Set(minutes) => match cycle_type {
-            "work" => Ok(Message::SetWork { value: *minutes as i16, is_delta: false }),
-            "short" => Ok(Message::SetShort { value: *minutes as i16, is_delta: false }),
-            "long" => Ok(Message::SetLong { value: *minutes as i16, is_delta: false }),
-            "current" => Ok(Message::SetCurrent { value: *minutes as i16, is_delta: false }),
+            "work" => Ok(Message::SetWork {
+                value: *minutes as i16,
+                is_delta: false,
+            }),
+            "short" => Ok(Message::SetShort {
+                value: *minutes as i16,
+                is_delta: false,
+            }),
+            "long" => Ok(Message::SetLong {
+                value: *minutes as i16,
+                is_delta: false,
+            }),
+            "current" => Ok(Message::SetCurrent {
+                value: *minutes as i16,
+                is_delta: false,
+            }),
             _ => Err(format!("Unknown cycle type: {}", cycle_type)),
         },
         TimeValue::Add(delta) => match cycle_type {
-            "work" => Ok(Message::SetWork { value: *delta, is_delta: true }),
-            "short" => Ok(Message::SetShort { value: *delta, is_delta: true }),
-            "long" => Ok(Message::SetLong { value: *delta, is_delta: true }),
-            "current" => Ok(Message::SetCurrent { value: *delta, is_delta: true }),
+            "work" => Ok(Message::SetWork {
+                value: *delta,
+                is_delta: true,
+            }),
+            "short" => Ok(Message::SetShort {
+                value: *delta,
+                is_delta: true,
+            }),
+            "long" => Ok(Message::SetLong {
+                value: *delta,
+                is_delta: true,
+            }),
+            "current" => Ok(Message::SetCurrent {
+                value: *delta,
+                is_delta: true,
+            }),
             _ => Err(format!("Unknown cycle type: {}", cycle_type)),
         },
         TimeValue::Subtract(delta) => match cycle_type {
-            "work" => Ok(Message::SetWork { value: -*delta, is_delta: true }),
-            "short" => Ok(Message::SetShort { value: -*delta, is_delta: true }),
-            "long" => Ok(Message::SetLong { value: -*delta, is_delta: true }),
-            "current" => Ok(Message::SetCurrent { value: -*delta, is_delta: true }),
+            "work" => Ok(Message::SetWork {
+                value: -*delta,
+                is_delta: true,
+            }),
+            "short" => Ok(Message::SetShort {
+                value: -*delta,
+                is_delta: true,
+            }),
+            "long" => Ok(Message::SetLong {
+                value: -*delta,
+                is_delta: true,
+            }),
+            "current" => Ok(Message::SetCurrent {
+                value: -*delta,
+                is_delta: true,
+            }),
             _ => Err(format!("Unknown cycle type: {}", cycle_type)),
         },
     }
