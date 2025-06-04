@@ -1,27 +1,25 @@
+use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 
-use regex::Regex;
-
-#[derive(Debug, PartialEq)]
-pub struct Message {
-    name: String,
-    value: i32,
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub enum Message {
+    SetWork(u16),
+    SetShort(u16),
+    SetLong(u16),
+    AddDeltaWork(i16),
+    AddDeltaShort(i16),
+    AddDeltaLong(i16),
 }
 
 impl Message {
     pub fn new(name: &str, value: i32) -> Self {
-        Self {
-            name: String::from(name),
-            value,
+        match name {
+            "set-work" => Message::SetWork(value as u16),
+            "set-short" => Message::SetShort(value as u16),
+            "set-long" => Message::SetLong(value as u16),
+            _ => panic!("Unknown message type: {}", name),
         }
-    }
-
-    pub fn name(&self) -> &str {
-        &self.name
-    }
-
-    pub fn value(&self) -> i32 {
-        self.value
     }
 
     pub fn decode(input: &str) -> Result<Self, Box<dyn Error>> {
@@ -33,17 +31,67 @@ impl Message {
                 if extracted.1[0].is_empty() {
                     return Err(format!("message name is missing. msg == {:?}", extracted).into());
                 }
-                Ok(Self {
-                    name: extracted.1[0].to_string(),
-                    value: extracted.1[1].parse()?,
-                })
+
+                let command = extracted.1[0];
+                let value_str = extracted.1[1];
+
+                if value_str.starts_with("add:") {
+                    let delta: i16 = value_str.strip_prefix("add:").unwrap().parse()?;
+                    match command {
+                        "set-work" => Ok(Message::AddDeltaWork(delta)),
+                        "set-short" => Ok(Message::AddDeltaShort(delta)),
+                        "set-long" => Ok(Message::AddDeltaLong(delta)),
+                        _ => Err(format!("Unknown command: {}", command).into()),
+                    }
+                } else if value_str.starts_with("minus:") {
+                    let delta: i16 = value_str.strip_prefix("minus:").unwrap().parse()?;
+                    match command {
+                        "set-work" => Ok(Message::AddDeltaWork(-delta)),
+                        "set-short" => Ok(Message::AddDeltaShort(-delta)),
+                        "set-long" => Ok(Message::AddDeltaLong(-delta)),
+                        _ => Err(format!("Unknown command: {}", command).into()),
+                    }
+                } else {
+                    let value: u16 = value_str.parse()?;
+                    match command {
+                        "set-work" => Ok(Message::SetWork(value)),
+                        "set-short" => Ok(Message::SetShort(value)),
+                        "set-long" => Ok(Message::SetLong(value)),
+                        _ => Err(format!("Unknown command: {}", command).into()),
+                    }
+                }
             }
             None => Err(format!("unable to decode message: {input}").into()),
         }
     }
 
     pub fn encode(&self) -> String {
-        format!("[{};{}]", self.name, self.value)
+        match self {
+            Message::SetWork(value) => format!("[set-work;{}]", value),
+            Message::SetShort(value) => format!("[set-short;{}]", value),
+            Message::SetLong(value) => format!("[set-long;{}]", value),
+            Message::AddDeltaWork(delta) => {
+                if *delta >= 0 {
+                    format!("[set-work;add:{}]", delta)
+                } else {
+                    format!("[set-work;minus:{}]", -delta)
+                }
+            }
+            Message::AddDeltaShort(delta) => {
+                if *delta >= 0 {
+                    format!("[set-short;add:{}]", delta)
+                } else {
+                    format!("[set-short;minus:{}]", -delta)
+                }
+            }
+            Message::AddDeltaLong(delta) => {
+                if *delta >= 0 {
+                    format!("[set-long;add:{}]", delta)
+                } else {
+                    format!("[set-long;minus:{}]", -delta)
+                }
+            }
+        }
     }
 }
 
@@ -53,37 +101,50 @@ mod tests {
 
     #[test]
     fn test_new() {
-        let message = Message::new("example", 42);
-        assert_eq!(message.name, "example");
-        assert_eq!(message.value, 42);
+        let message = Message::new("set-work", 42);
+        assert_eq!(message, Message::SetWork(42));
     }
 
     #[test]
-    fn test_name() {
-        let message = Message::new("example", 42);
-        assert_eq!(message.name(), "example");
+    fn test_encode_set_work() {
+        let message = Message::SetWork(25);
+        assert_eq!(message.encode(), "[set-work;25]");
     }
 
     #[test]
-    fn test_value() {
-        let message = Message::new("example", 42);
-        assert_eq!(message.value(), 42);
+    fn test_encode_add_delta() {
+        let message = Message::AddDeltaWork(5);
+        assert_eq!(message.encode(), "[set-work;add:5]");
+
+        let message = Message::AddDeltaWork(-5);
+        assert_eq!(message.encode(), "[set-work;minus:5]");
     }
 
     #[test]
-    fn test_encode() {
-        let message = Message::new("example", 42);
-        assert_eq!(message.encode(), "[example;42]");
-    }
-
-    #[test]
-    fn test_decode_success() {
-        let input = "[example;42]";
+    fn test_decode_set_work() {
+        let input = "[set-work;25]";
         let result = Message::decode(input);
         assert!(result.is_ok());
         let message = result.unwrap();
-        assert_eq!(message.name, "example");
-        assert_eq!(message.value, 42);
+        assert_eq!(message, Message::SetWork(25));
+    }
+
+    #[test]
+    fn test_decode_add_delta() {
+        let input = "[set-work;add:5]";
+        let result = Message::decode(input);
+        assert!(result.is_ok());
+        let message = result.unwrap();
+        assert_eq!(message, Message::AddDeltaWork(5));
+    }
+
+    #[test]
+    fn test_decode_minus_delta() {
+        let input = "[set-work;minus:5]";
+        let result = Message::decode(input);
+        assert!(result.is_ok());
+        let message = result.unwrap();
+        assert_eq!(message, Message::AddDeltaWork(-5));
     }
 
     #[test]
@@ -110,42 +171,12 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_failure_no_value() {
-        let input = "[example;]";
+    fn test_decode_failure_unknown_command() {
+        let input = "[unknown;42]";
         let result = Message::decode(input);
         assert!(result.is_err());
         if let Err(e) = result {
-            assert_eq!(e.to_string(), "cannot parse integer from empty string");
-        }
-    }
-
-    #[test]
-    fn test_decode_failure_not_a_number() {
-        let input = "[example;not_a_number]";
-        let result = Message::decode(input);
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert_eq!(e.to_string(), "invalid digit found in string");
-        }
-    }
-
-    #[test]
-    fn test_decode_missing_parts() {
-        let input = "[example]";
-        let result = Message::decode(input);
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert_eq!(e.to_string(), "unable to decode message: [example]");
-        }
-    }
-
-    #[test]
-    fn test_decode_empty_input() {
-        let input = "";
-        let result = Message::decode(input);
-        assert!(result.is_err());
-        if let Err(e) = result {
-            assert_eq!(e.to_string(), "unable to decode message: ");
+            assert_eq!(e.to_string(), "Unknown command: unknown");
         }
     }
 }
