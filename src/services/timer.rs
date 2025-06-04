@@ -88,6 +88,37 @@ impl Timer {
         println!("{:?}", self.times);
     }
 
+    pub fn set_current_duration(&mut self, minutes: u16) {
+        self.times[self.current_index] = minutes * 60;
+        // Reset elapsed time if we set it to less than current elapsed
+        if self.elapsed_time > self.times[self.current_index] {
+            self.elapsed_time = self.times[self.current_index];
+            self.elapsed_millis = 0;
+        }
+        println!("{:?}", self.times);
+    }
+
+    pub fn add_current_delta_time(&mut self, delta: i16) {
+        let delta_seconds = delta * 60;
+        let current_time = self.times[self.current_index] as i32;
+        let new_time = (current_time + delta_seconds as i32).max(0) as u16;
+
+        // If the time goes to zero, gracefully transition
+        if new_time == 0 {
+            self.elapsed_time = self.times[self.current_index];
+            self.elapsed_millis = 0;
+        } else {
+            self.times[self.current_index] = new_time;
+            // Adjust elapsed time if necessary
+            if self.elapsed_time > new_time {
+                self.elapsed_time = new_time;
+                self.elapsed_millis = 0;
+            }
+        }
+
+        println!("{:?}", self.times);
+    }
+
     pub fn get_class(&self) -> String {
         // timer hasn't been started yet
         if self.elapsed_millis == 0

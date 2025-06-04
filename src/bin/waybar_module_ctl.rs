@@ -58,7 +58,7 @@ fn main() -> std::io::Result<()> {
         Operation::Start => "start".to_string(),
         Operation::Stop => "stop".to_string(),
         Operation::Reset => "reset".to_string(),
-        Operation::SetWork { .. } | Operation::SetShort { .. } | Operation::SetLong { .. } => {
+        Operation::SetWork { .. } | Operation::SetShort { .. } | Operation::SetLong { .. } | Operation::SetCurrent { .. } => {
             match cli.operation.to_message() {
                 Ok(msg) => msg.encode(),
                 Err(e) => {

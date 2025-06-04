@@ -66,6 +66,11 @@ pub enum Operation {
         #[arg(value_parser = parse_time_value)]
         value: TimeValue,
     },
+    /// Set duration for current timer state [supports: 25, 5+, 3-]
+    SetCurrent {
+        #[arg(value_parser = parse_time_value)]
+        value: TimeValue,
+    },
 }
 
 impl Operation {
@@ -74,6 +79,7 @@ impl Operation {
             Operation::SetWork { value } => time_value_to_message(value, "work"),
             Operation::SetShort { value } => time_value_to_message(value, "short"),
             Operation::SetLong { value } => time_value_to_message(value, "long"),
+            Operation::SetCurrent { value } => time_value_to_message(value, "current"),
             _ => Err("Not a set operation".to_string()),
         }
     }
@@ -85,18 +91,21 @@ fn time_value_to_message(value: &TimeValue, cycle_type: &str) -> Result<Message,
             "work" => Ok(Message::SetWork { value: *minutes as i16, is_delta: false }),
             "short" => Ok(Message::SetShort { value: *minutes as i16, is_delta: false }),
             "long" => Ok(Message::SetLong { value: *minutes as i16, is_delta: false }),
+            "current" => Ok(Message::SetCurrent { value: *minutes as i16, is_delta: false }),
             _ => Err(format!("Unknown cycle type: {}", cycle_type)),
         },
         TimeValue::Add(delta) => match cycle_type {
             "work" => Ok(Message::SetWork { value: *delta, is_delta: true }),
             "short" => Ok(Message::SetShort { value: *delta, is_delta: true }),
             "long" => Ok(Message::SetLong { value: *delta, is_delta: true }),
+            "current" => Ok(Message::SetCurrent { value: *delta, is_delta: true }),
             _ => Err(format!("Unknown cycle type: {}", cycle_type)),
         },
         TimeValue::Subtract(delta) => match cycle_type {
             "work" => Ok(Message::SetWork { value: -*delta, is_delta: true }),
             "short" => Ok(Message::SetShort { value: -*delta, is_delta: true }),
             "long" => Ok(Message::SetLong { value: -*delta, is_delta: true }),
+            "current" => Ok(Message::SetCurrent { value: -*delta, is_delta: true }),
             _ => Err(format!("Unknown cycle type: {}", cycle_type)),
         },
     }

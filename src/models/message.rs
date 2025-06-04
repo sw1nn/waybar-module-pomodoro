@@ -6,6 +6,7 @@ pub enum Message {
     SetWork { value: i16, is_delta: bool },
     SetShort { value: i16, is_delta: bool },
     SetLong { value: i16, is_delta: bool },
+    SetCurrent { value: i16, is_delta: bool },
 }
 
 impl Message {
@@ -20,6 +21,10 @@ impl Message {
                 is_delta: false,
             },
             "set-long" => Message::SetLong {
+                value: value as i16,
+                is_delta: false,
+            },
+            "set-current" => Message::SetCurrent {
                 value: value as i16,
                 is_delta: false,
             },
@@ -143,6 +148,8 @@ mod tests {
             Message::SetLong { value: 15, is_delta: false },
             Message::SetWork { value: 5, is_delta: true },
             Message::SetWork { value: -5, is_delta: true },
+            Message::SetCurrent { value: 30, is_delta: false },
+            Message::SetCurrent { value: 5, is_delta: true },
         ];
         
         for msg in messages {

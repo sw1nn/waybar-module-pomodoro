@@ -168,6 +168,13 @@ fn process_message(state: &mut Timer, message: &str) {
                     state.set_time(CycleType::LongBreak, value as u16)
                 }
             }
+            Message::SetCurrent { value, is_delta } => {
+                if is_delta {
+                    state.add_current_delta_time(value)
+                } else {
+                    state.set_current_duration(value as u16)
+                }
+            }
         }
     } else {
         debug!("Message decode failed, trying raw commands");
@@ -477,6 +484,33 @@ mod tests {
         let mut timer = create_timer();
         process_message(&mut timer, "stop");
         assert!(!timer.running);
+    }
+
+    #[test]
+    fn test_process_message_set_current() {
+        let mut timer = create_timer();
+        
+        // Test setting current work time
+        timer.current_index = 0;
+        let msg = r#"{"SetCurrent":{"value":30,"is_delta":false}}"#;
+        process_message(&mut timer, msg);
+        assert_eq!(timer.times[0], 30 * 60);
+        
+        // Test setting current break time
+        timer.current_index = 1;
+        let msg = r#"{"SetCurrent":{"value":10,"is_delta":false}}"#;
+        process_message(&mut timer, msg);
+        assert_eq!(timer.times[1], 10 * 60);
+        
+        // Test delta on current
+        let msg = r#"{"SetCurrent":{"value":5,"is_delta":true}}"#;
+        process_message(&mut timer, msg);
+        assert_eq!(timer.times[1], 15 * 60);
+        
+        // Test negative delta
+        let msg = r#"{"SetCurrent":{"value":-2,"is_delta":true}}"#;
+        process_message(&mut timer, msg);
+        assert_eq!(timer.times[1], 13 * 60);
     }
 
     // TODO:
