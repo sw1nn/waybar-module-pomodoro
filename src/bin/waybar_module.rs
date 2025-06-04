@@ -20,7 +20,6 @@ fn setup_tracing(log_option: Option<LogOption>) {
     match log_option {
         None => {
             // No logging - just return without initializing tracing
-            return;
         }
         Some(LogOption::Journald) => {
             // Log to journald
