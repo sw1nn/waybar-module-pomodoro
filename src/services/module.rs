@@ -1,13 +1,16 @@
 use std::{
-    env, fs,
-    io::{Error, Read, Write},
+    fs,
+    io::{BufReader, Error, Read, Write},
     os::unix::net::{UnixListener, UnixStream},
-    path::Path,
+    path::{Path, PathBuf},
     sync::mpsc::{Receiver, Sender},
     thread,
 };
 
 use notify_rust::Notification;
+use rodio::{Decoder, OutputStream, Sink};
+use tracing::{debug, info, warn};
+use xdg::BaseDirectories;
 
 use crate::{
     models::{config::Config, message::Message},
@@ -22,18 +25,92 @@ use super::{
     timer::{CycleType, Timer},
 };
 
-pub fn send_notification(cycle_type: CycleType) {
-    if let Err(e) = Notification::new()
-        .summary("Pomodoro")
-        .body(match cycle_type {
-            CycleType::Work => "Time to work!",
-            CycleType::ShortBreak => "Time for a short break!",
-            CycleType::LongBreak => "Time for a long break!",
-        })
-        .show()
-    {
-        println!("err: send_notification, err == {e}");
+pub fn play_sound(file_path: Option<&str>) {
+    debug!("play_sound called with file_path: {:?}", file_path);
+
+    // Return early if no sound file is specified
+    let file_path = match file_path {
+        Some(path) => path,
+        None => {
+            debug!("Skipping sound playback: no sound file specified");
+            return;
+        }
+    };
+
+    // Check if file exists
+    if !Path::new(file_path).exists() {
+        warn!("Sound file not found: {}", file_path);
+        return;
     }
+
+    debug!("Starting sound playback for: {}", file_path);
+
+    // Spawn a thread for non-blocking audio playback
+    let file_path = file_path.to_string();
+    thread::spawn(move || match play_audio_file(&file_path) {
+        Ok(_) => debug!("Successfully played sound: {}", file_path),
+        Err(e) => warn!("Failed to play sound {}: {}", file_path, e),
+    });
+}
+
+fn play_audio_file(file_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    debug!("play_audio_file: Creating audio output stream");
+
+    // Create audio output stream
+    let (_stream, stream_handle) = OutputStream::try_default()?;
+    debug!("play_audio_file: Audio output stream created successfully");
+
+    debug!("play_audio_file: Opening file: {}", file_path);
+
+    // Open and decode the audio file
+    let file = fs::File::open(file_path)?;
+    let buf_reader = BufReader::new(file);
+
+    debug!("play_audio_file: Decoding audio file");
+    let source = Decoder::new(buf_reader)?;
+    debug!("play_audio_file: Audio file decoded successfully");
+
+    debug!("play_audio_file: Creating audio sink");
+
+    // Create a sink and play the audio
+    let sink = Sink::try_new(&stream_handle)?;
+    sink.append(source);
+    debug!("play_audio_file: Audio appended to sink, starting playback");
+
+    // Wait for playback to finish
+    sink.sleep_until_end();
+    debug!("play_audio_file: Playback finished");
+
+    Ok(())
+}
+
+pub fn send_notification(cycle_type: CycleType, config: &Config) {
+    debug!("send_notification called for cycle_type: {:?}", cycle_type);
+
+    // Check if notifications are enabled
+    if config.with_notifications {
+        if let Err(e) = Notification::new()
+            .summary("Pomodoro")
+            .body(match cycle_type {
+                CycleType::Work => "Time to work!",
+                CycleType::ShortBreak => "Time for a short break!",
+                CycleType::LongBreak => "Time for a long break!",
+            })
+            .show()
+        {
+            warn!("send_notification failed: {}", e);
+        }
+    } else {
+        debug!("Notifications disabled, skipping desktop notification");
+    }
+
+    let sound_file = match cycle_type {
+        CycleType::Work => config.work_sound.as_deref(),
+        CycleType::ShortBreak | CycleType::LongBreak => config.break_sound.as_deref(),
+    };
+
+    debug!("send_notification: Using sound file: {:?}", sound_file);
+    play_sound(sound_file)
 }
 
 fn format_time(elapsed_time: u16, max_time: u16) -> String {
@@ -58,29 +135,41 @@ fn create_message(value: String, tooltip: &str, class: &str) -> String {
 }
 
 fn process_message(state: &mut Timer, message: &str) {
+    debug!("process_message called with: '{}'", message);
     if let Ok(msg) = Message::decode(message) {
-        match msg.name() {
-            "set-work" => state.set_time(CycleType::Work, msg.value() as u16),
-            "set-short" => state.set_time(CycleType::ShortBreak, msg.value() as u16),
-            "set-long" => state.set_time(CycleType::LongBreak, msg.value() as u16),
-            _ => println!("err: invalid command, {}", msg.name()),
+        debug!("Decoded message: {:?}", msg);
+        match msg {
+            Message::SetWork(value) => state.set_time(CycleType::Work, value),
+            Message::SetShort(value) => state.set_time(CycleType::ShortBreak, value),
+            Message::SetLong(value) => state.set_time(CycleType::LongBreak, value),
+            Message::AddDeltaWork(delta) => state.add_delta_time(CycleType::Work, delta),
+            Message::AddDeltaShort(delta) => state.add_delta_time(CycleType::ShortBreak, delta),
+            Message::AddDeltaLong(delta) => state.add_delta_time(CycleType::LongBreak, delta),
         }
     } else {
+        debug!("Message decode failed, trying raw commands");
         match message {
             "start" => {
+                debug!("Setting running to true");
                 state.running = true;
             }
             "stop" => {
+                debug!("Setting running to false");
                 state.running = false;
             }
             "toggle" => {
+                debug!(
+                    "Toggling running state from {} to {}",
+                    state.running, !state.running
+                );
                 state.running = !state.running;
             }
             "reset" => {
+                debug!("Resetting timer");
                 state.reset();
             }
             _ => {
-                println!("Unknown message: {}", message);
+                debug!("Unknown message: '{}'", message);
             }
         }
     }
@@ -105,6 +194,7 @@ fn handle_client(rx: Receiver<String>, socket_path: String, config: Config) {
 
     loop {
         if let Ok(message) = rx.try_recv() {
+            debug!("Processing message: '{}'", message);
             process_message(&mut state, &message);
         }
 
@@ -152,10 +242,12 @@ fn delete_socket(socket_path: &str) {
     }
 }
 
-pub fn spawn_server(socket_path: &str, config: Config) {
+pub fn spawn_module(socket_path: &str, config: Config) {
+    info!("Creating socket at: {}", socket_path);
     delete_socket(socket_path);
 
     let listener = UnixListener::bind(socket_path).unwrap();
+    info!("Socket bound successfully");
     let (tx, rx): (Sender<String>, Receiver<String>) = std::sync::mpsc::channel();
     {
         let socket_path = socket_path.to_owned();
@@ -171,47 +263,77 @@ pub fn spawn_server(socket_path: &str, config: Config) {
                     .read_to_string(&mut message)
                     .expect("Failed to read UNIX stream");
 
+                debug!("Received message: '{}'", message);
+
                 if message.contains("exit") {
+                    info!("Received exit signal, shutting down module");
                     delete_socket(socket_path);
                     break;
                 }
                 tx.send(message.to_string()).unwrap();
             }
-            Err(err) => println!("Error: {}", err),
+            Err(err) => warn!("Socket error: {}", err),
         }
     }
 }
 
-pub fn get_existing_sockets(binary_name: &str) -> Vec<String> {
-    let mut files: Vec<String> = vec![];
+pub fn get_existing_sockets(binary_name: &str) -> Vec<PathBuf> {
+    let mut files: Vec<PathBuf> = vec![];
 
-    if let Ok(paths) = env::temp_dir().read_dir() {
-        for path in paths {
-            let name = path.unwrap().path().to_str().unwrap().to_string();
-            if name.contains(binary_name) {
-                files.push(name);
+    // Use XDG runtime directory for socket discovery
+    let xdg_dirs = match BaseDirectories::with_prefix(binary_name) {
+        Ok(dirs) => dirs,
+        Err(e) => {
+            warn!("Failed to get XDG base directories: {}", e);
+            return files;
+        }
+    };
+
+    debug!("Looking for socket files using XDG list_runtime_files");
+
+    // Use list_runtime_files to get all files in our XDG runtime directory
+    let paths = xdg_dirs.list_runtime_files(".");
+    for path in paths {
+        if let Some(file_name) = path.file_name() {
+            if let Some(file_name_str) = file_name.to_str() {
+                debug!("Found file: {}", file_name_str);
+                // Look for socket files
+                if file_name_str.ends_with(".socket") {
+                    debug!("Found socket file, adding: {}", path.display());
+                    // Canonicalize the path to ensure it's canonical
+                    match path.canonicalize() {
+                        Ok(canonical_path) => files.push(canonical_path),
+                        Err(e) => {
+                            warn!("Failed to canonicalize path {}: {}", path.display(), e);
+                            // Fallback to the original path if canonicalization fails
+                            files.push(path);
+                        }
+                    }
+                }
             }
         }
     }
 
+    debug!("Found {} matching socket files", files.len());
     files
 }
 
 pub fn send_message_socket(socket_path: &str, msg: &str) -> Result<(), Error> {
+    debug!("Attempting to connect to socket: {}", socket_path);
+    debug!("Message to send: '{}'", msg);
     let mut stream = UnixStream::connect(socket_path)?;
+    debug!("Connected to socket successfully");
     stream.write_all(msg.as_bytes())?;
+    debug!("Message written successfully");
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::LONG_BREAK_TIME;
-    use crate::SHORT_BREAK_TIME;
-    use fs::File;
-    use utils::consts::WORK_TIME;
+    use crate::utils::consts::{LONG_BREAK_TIME, SHORT_BREAK_TIME, WORK_TIME};
 
     use super::*;
-    use crate::services::server::CycleType;
+    use crate::services::module::CycleType;
 
     fn create_timer() -> Timer {
         Timer::new(WORK_TIME, SHORT_BREAK_TIME, LONG_BREAK_TIME, 0)
@@ -227,17 +349,20 @@ mod tests {
 
     #[test]
     fn test_send_notification_work() {
-        send_notification(CycleType::Work);
+        let config = Config::default();
+        send_notification(CycleType::Work, &config);
     }
 
     #[test]
     fn test_send_notification_short_break() {
-        send_notification(CycleType::ShortBreak);
+        let config = Config::default();
+        send_notification(CycleType::ShortBreak, &config);
     }
 
     #[test]
     fn test_send_notification_long_break() {
-        send_notification(CycleType::LongBreak);
+        let config = Config::default();
+        send_notification(CycleType::LongBreak, &config);
     }
 
     #[test]
@@ -298,7 +423,7 @@ mod tests {
 
     // TODO:
     // #[tokio::test]
-    // async fn test_spawn_server() {
+    // async fn test_spawn_module() {
     // }
 
     // TODO:
@@ -319,19 +444,5 @@ mod tests {
 
         delete_socket(socket_path);
         assert!(!std::path::Path::new(socket_path).exists());
-    }
-
-    #[test]
-    fn test_get_existing_sockets() {
-        let binary_name = "waybar-module-pomodoro_test";
-        let temp_dir = env::temp_dir();
-        let socket_path = temp_dir.join(binary_name);
-
-        File::create(&socket_path).unwrap();
-
-        let result = get_existing_sockets(binary_name);
-        assert!(result.contains(&socket_path.to_string_lossy().to_string()));
-
-        std::fs::remove_file(socket_path).unwrap();
     }
 }

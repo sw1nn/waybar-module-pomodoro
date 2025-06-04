@@ -5,8 +5,9 @@ use crate::{
     utils::consts::{MAX_ITERATIONS, SLEEP_TIME},
 };
 
-use super::server::send_notification;
+use super::module::send_notification;
 
+#[derive(Debug)]
 pub enum CycleType {
     Work,
     ShortBreak,
@@ -59,6 +60,29 @@ impl Timer {
             CycleType::ShortBreak => self.times[1] = input * 60,
             CycleType::LongBreak => self.times[2] = input * 60,
         }
+        println!("{:?}", self.times);
+    }
+
+    pub fn add_delta_time(&mut self, cycle: CycleType, delta: i16) {
+        let index = match cycle {
+            CycleType::Work => 0,
+            CycleType::ShortBreak => 1,
+            CycleType::LongBreak => 2,
+        };
+
+        let delta_seconds = delta * 60;
+        let current_time = self.times[index] as i32;
+        let new_time = (current_time + delta_seconds as i32).max(0) as u16;
+
+        // If we're modifying the current active cycle and the time goes to zero
+        if new_time == 0 && self.current_index == index {
+            // Gracefully transition to next state by setting elapsed time to max
+            self.elapsed_time = self.times[index];
+            self.elapsed_millis = 0;
+        } else {
+            self.times[index] = new_time;
+        }
+
         println!("{:?}", self.times);
     }
 
@@ -119,12 +143,15 @@ impl Timer {
 
             // only send a notification for the first instance of the module
             if self.socket_nr == 0 {
-                send_notification(match self.current_index {
-                    0 => CycleType::Work,
-                    1 => CycleType::ShortBreak,
-                    2 => CycleType::LongBreak,
-                    _ => panic!("Invalid cycle type"),
-                });
+                send_notification(
+                    match self.current_index {
+                        0 => CycleType::Work,
+                        1 => CycleType::ShortBreak,
+                        2 => CycleType::LongBreak,
+                        _ => panic!("Invalid cycle type"),
+                    },
+                    config,
+                );
             }
         }
     }
@@ -145,10 +172,7 @@ impl Timer {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utils::consts::SLEEP_DURATION;
-    use crate::LONG_BREAK_TIME;
-    use crate::SHORT_BREAK_TIME;
-    use crate::WORK_TIME;
+    use crate::utils::consts::{LONG_BREAK_TIME, SHORT_BREAK_TIME, SLEEP_DURATION, WORK_TIME};
 
     fn create_timer() -> Timer {
         Timer::new(WORK_TIME, SHORT_BREAK_TIME, LONG_BREAK_TIME, 0)
