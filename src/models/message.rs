@@ -2,7 +2,14 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum Message {
+    // Simple commands
+    Start,
+    Stop,
+    Toggle,
+    Reset,
+    // Duration commands
     SetWork { value: i16, is_delta: bool },
     SetShort { value: i16, is_delta: bool },
     SetLong { value: i16, is_delta: bool },
@@ -31,7 +38,7 @@ mod tests {
         };
         assert_eq!(
             message.encode(),
-            r#"{"SetWork":{"value":25,"is_delta":false}}"#
+            r#"{"set-work":{"value":25,"is_delta":false}}"#
         );
     }
 
@@ -43,7 +50,7 @@ mod tests {
         };
         assert_eq!(
             message.encode(),
-            r#"{"SetWork":{"value":5,"is_delta":true}}"#
+            r#"{"set-work":{"value":5,"is_delta":true}}"#
         );
 
         let message = Message::SetWork {
@@ -52,13 +59,13 @@ mod tests {
         };
         assert_eq!(
             message.encode(),
-            r#"{"SetWork":{"value":-5,"is_delta":true}}"#
+            r#"{"set-work":{"value":-5,"is_delta":true}}"#
         );
     }
 
     #[test]
     fn test_decode_set_work() {
-        let input = r#"{"SetWork":{"value":25,"is_delta":false}}"#;
+        let input = r#"{"set-work":{"value":25,"is_delta":false}}"#;
         let result = Message::decode(input);
         assert!(result.is_ok());
         let message = result.unwrap();
@@ -73,7 +80,7 @@ mod tests {
 
     #[test]
     fn test_decode_positive_delta() {
-        let input = r#"{"SetWork":{"value":5,"is_delta":true}}"#;
+        let input = r#"{"set-work":{"value":5,"is_delta":true}}"#;
         let result = Message::decode(input);
         assert!(result.is_ok());
         let message = result.unwrap();
@@ -88,7 +95,7 @@ mod tests {
 
     #[test]
     fn test_decode_negative_delta() {
-        let input = r#"{"SetWork":{"value":-5,"is_delta":true}}"#;
+        let input = r#"{"set-work":{"value":-5,"is_delta":true}}"#;
         let result = Message::decode(input);
         assert!(result.is_ok());
         let message = result.unwrap();
@@ -116,8 +123,20 @@ mod tests {
     }
 
     #[test]
+    fn test_encode_simple_commands() {
+        assert_eq!(Message::Start.encode(), r#""start""#);
+        assert_eq!(Message::Stop.encode(), r#""stop""#);
+        assert_eq!(Message::Toggle.encode(), r#""toggle""#);
+        assert_eq!(Message::Reset.encode(), r#""reset""#);
+    }
+
+    #[test]
     fn test_serde_roundtrip() {
         let messages = vec![
+            Message::Start,
+            Message::Stop,
+            Message::Toggle,
+            Message::Reset,
             Message::SetWork {
                 value: 25,
                 is_delta: false,

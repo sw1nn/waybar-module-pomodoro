@@ -1,4 +1,5 @@
 use crate::models::message::Message;
+use crate::services::timer::CycleType;
 use clap::{Parser, Subcommand};
 
 #[derive(Debug, Clone)]
@@ -41,7 +42,7 @@ pub struct ControlCli {
     pub operation: Operation,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Clone)]
 pub enum Operation {
     /// Toggles the timer
     Toggle,
@@ -74,75 +75,31 @@ pub enum Operation {
 }
 
 impl Operation {
-    pub fn to_message(&self) -> Result<Message, String> {
+    pub fn to_message(&self) -> Message {
         match self {
-            Operation::SetWork { value } => time_value_to_message(value, "work"),
-            Operation::SetShort { value } => time_value_to_message(value, "short"),
-            Operation::SetLong { value } => time_value_to_message(value, "long"),
-            Operation::SetCurrent { value } => time_value_to_message(value, "current"),
-            _ => Err("Not a set operation".to_string()),
+            Operation::Toggle => Message::Toggle,
+            Operation::Start => Message::Start,
+            Operation::Stop => Message::Stop,
+            Operation::Reset => Message::Reset,
+            Operation::SetWork { value } => time_value_to_message(value, Some(CycleType::Work)),
+            Operation::SetShort { value } => time_value_to_message(value, Some(CycleType::ShortBreak)),
+            Operation::SetLong { value } => time_value_to_message(value, Some(CycleType::LongBreak)),
+            Operation::SetCurrent { value } => time_value_to_message(value, None),
         }
     }
 }
 
-fn time_value_to_message(value: &TimeValue, cycle_type: &str) -> Result<Message, String> {
-    match value {
-        TimeValue::Set(minutes) => match cycle_type {
-            "work" => Ok(Message::SetWork {
-                value: *minutes as i16,
-                is_delta: false,
-            }),
-            "short" => Ok(Message::SetShort {
-                value: *minutes as i16,
-                is_delta: false,
-            }),
-            "long" => Ok(Message::SetLong {
-                value: *minutes as i16,
-                is_delta: false,
-            }),
-            "current" => Ok(Message::SetCurrent {
-                value: *minutes as i16,
-                is_delta: false,
-            }),
-            _ => Err(format!("Unknown cycle type: {}", cycle_type)),
-        },
-        TimeValue::Add(delta) => match cycle_type {
-            "work" => Ok(Message::SetWork {
-                value: *delta,
-                is_delta: true,
-            }),
-            "short" => Ok(Message::SetShort {
-                value: *delta,
-                is_delta: true,
-            }),
-            "long" => Ok(Message::SetLong {
-                value: *delta,
-                is_delta: true,
-            }),
-            "current" => Ok(Message::SetCurrent {
-                value: *delta,
-                is_delta: true,
-            }),
-            _ => Err(format!("Unknown cycle type: {}", cycle_type)),
-        },
-        TimeValue::Subtract(delta) => match cycle_type {
-            "work" => Ok(Message::SetWork {
-                value: -*delta,
-                is_delta: true,
-            }),
-            "short" => Ok(Message::SetShort {
-                value: -*delta,
-                is_delta: true,
-            }),
-            "long" => Ok(Message::SetLong {
-                value: -*delta,
-                is_delta: true,
-            }),
-            "current" => Ok(Message::SetCurrent {
-                value: -*delta,
-                is_delta: true,
-            }),
-            _ => Err(format!("Unknown cycle type: {}", cycle_type)),
-        },
+fn time_value_to_message(value: &TimeValue, cycle_type: Option<CycleType>) -> Message {
+    let (final_value, is_delta) = match value {
+        TimeValue::Set(minutes) => (*minutes as i16, false),
+        TimeValue::Add(delta) => (*delta, true),
+        TimeValue::Subtract(delta) => (-*delta, true),
+    };
+
+    match cycle_type {
+        Some(CycleType::Work) => Message::SetWork { value: final_value, is_delta },
+        Some(CycleType::ShortBreak) => Message::SetShort { value: final_value, is_delta },
+        Some(CycleType::LongBreak) => Message::SetLong { value: final_value, is_delta },
+        None => Message::SetCurrent { value: final_value, is_delta },
     }
 }

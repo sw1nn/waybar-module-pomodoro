@@ -9,6 +9,12 @@ use super::module::send_notification;
 
 use tracing::debug;
 
+// CSS class constants
+const CLASS_EMPTY: &str = "";
+const CLASS_PAUSE: &str = "pause";
+const CLASS_WORK: &str = "work";
+const CLASS_BREAK: &str = "break";
+
 #[derive(Debug)]
 pub enum CycleType {
     Work,
@@ -119,26 +125,26 @@ impl Timer {
         println!("{:?}", self.times);
     }
 
-    pub fn get_class(&self) -> String {
+    pub fn get_class(&self) -> &'static str {
         // timer hasn't been started yet
         if self.elapsed_millis == 0
             && self.elapsed_time == 0
             && self.iterations == 0
             && self.session_completed == 0
         {
-            "".to_owned()
+            CLASS_EMPTY
         }
         // timer has been paused
         else if !self.running {
-            "pause".to_owned()
+            CLASS_PAUSE
         }
         // currently doing some work
         else if !self.is_break() {
-            "work".to_owned()
+            CLASS_WORK
         }
         // currently a break
         else if self.is_break() {
-            "break".to_owned()
+            CLASS_BREAK
         } else {
             panic!("invalid condition occurred while setting class!");
         }
@@ -273,17 +279,17 @@ mod tests {
     fn test_get_class() {
         let mut timer = create_timer();
 
-        assert_eq!(timer.get_class(), "");
+        assert_eq!(timer.get_class(), CLASS_EMPTY);
 
         timer.running = true;
         timer.elapsed_millis = 1;
-        assert_eq!(timer.get_class(), "work");
+        assert_eq!(timer.get_class(), CLASS_WORK);
 
         timer.current_index = 1;
-        assert_eq!(timer.get_class(), "break");
+        assert_eq!(timer.get_class(), CLASS_BREAK);
 
         timer.running = false;
-        assert_eq!(timer.get_class(), "pause");
+        assert_eq!(timer.get_class(), CLASS_PAUSE);
     }
 
     #[test]

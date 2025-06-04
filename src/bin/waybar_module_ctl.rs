@@ -3,7 +3,7 @@ use std::env;
 use tracing::{debug, warn};
 use tracing_subscriber::EnvFilter;
 
-use waybar_module_pomodoro::control_cli::{ControlCli, Operation};
+use waybar_module_pomodoro::control_cli::ControlCli;
 use waybar_module_pomodoro::services::module::{get_existing_sockets, send_message_socket};
 
 fn setup_tracing() {
@@ -57,22 +57,7 @@ fn main() -> std::io::Result<()> {
         debug!("Socket path: {}", socket.display());
     }
 
-    let message = match &cli.operation {
-        Operation::Toggle => "toggle".to_string(),
-        Operation::Start => "start".to_string(),
-        Operation::Stop => "stop".to_string(),
-        Operation::Reset => "reset".to_string(),
-        Operation::SetWork { .. }
-        | Operation::SetShort { .. }
-        | Operation::SetLong { .. }
-        | Operation::SetCurrent { .. } => match cli.operation.to_message() {
-            Ok(msg) => msg.encode(),
-            Err(e) => {
-                eprintln!("Error parsing command: {}", e);
-                return Ok(());
-            }
-        },
-    };
+    let message = cli.operation.to_message().encode();
 
     let mut success_count = 0;
     for socket in sockets {

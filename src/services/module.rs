@@ -144,63 +144,64 @@ fn create_message(value: String, tooltip: &str, class: &str) -> String {
 
 fn process_message(state: &mut Timer, message: &str) {
     debug!("process_message called with: '{}'", message);
-    if let Ok(msg) = Message::decode(message) {
-        debug!("Decoded message: {:?}", msg);
-        match msg {
-            Message::SetWork { value, is_delta } => {
-                if is_delta {
-                    state.add_delta_time(CycleType::Work, value)
-                } else {
-                    state.set_time(CycleType::Work, value as u16)
+    
+    match Message::decode(message) {
+        Ok(msg) => {
+            debug!("Decoded message: {:?}", msg);
+            match msg {
+                // Simple commands
+                Message::Start => {
+                    debug!("Setting running to true");
+                    state.running = true;
                 }
-            }
-            Message::SetShort { value, is_delta } => {
-                if is_delta {
-                    state.add_delta_time(CycleType::ShortBreak, value)
-                } else {
-                    state.set_time(CycleType::ShortBreak, value as u16)
+                Message::Stop => {
+                    debug!("Setting running to false");
+                    state.running = false;
                 }
-            }
-            Message::SetLong { value, is_delta } => {
-                if is_delta {
-                    state.add_delta_time(CycleType::LongBreak, value)
-                } else {
-                    state.set_time(CycleType::LongBreak, value as u16)
+                Message::Toggle => {
+                    debug!(
+                        "Toggling running state from {} to {}",
+                        state.running, !state.running
+                    );
+                    state.running = !state.running;
                 }
-            }
-            Message::SetCurrent { value, is_delta } => {
-                if is_delta {
-                    state.add_current_delta_time(value)
-                } else {
-                    state.set_current_duration(value as u16)
+                Message::Reset => {
+                    debug!("Resetting timer");
+                    state.reset();
+                }
+                // Duration commands
+                Message::SetWork { value, is_delta } => {
+                    if is_delta {
+                        state.add_delta_time(CycleType::Work, value)
+                    } else {
+                        state.set_time(CycleType::Work, value as u16)
+                    }
+                }
+                Message::SetShort { value, is_delta } => {
+                    if is_delta {
+                        state.add_delta_time(CycleType::ShortBreak, value)
+                    } else {
+                        state.set_time(CycleType::ShortBreak, value as u16)
+                    }
+                }
+                Message::SetLong { value, is_delta } => {
+                    if is_delta {
+                        state.add_delta_time(CycleType::LongBreak, value)
+                    } else {
+                        state.set_time(CycleType::LongBreak, value as u16)
+                    }
+                }
+                Message::SetCurrent { value, is_delta } => {
+                    if is_delta {
+                        state.add_current_delta_time(value)
+                    } else {
+                        state.set_current_duration(value as u16)
+                    }
                 }
             }
         }
-    } else {
-        debug!("Message decode failed, trying raw commands");
-        match message {
-            "start" => {
-                debug!("Setting running to true");
-                state.running = true;
-            }
-            "stop" => {
-                debug!("Setting running to false");
-                state.running = false;
-            }
-            "toggle" => {
-                debug!(
-                    "Toggling running state from {} to {}",
-                    state.running, !state.running
-                );
-                state.running = !state.running;
-            }
-            "reset" => {
-                debug!("Resetting timer");
-                state.reset();
-            }
-            _ => {
-                debug!("Unknown message: '{}'", message);
-            }
+        Err(e) => {
+            debug!("Failed to decode message '{}': {}", message, e);
         }
     }
 }
@@ -262,7 +263,7 @@ fn handle_client(rx: Receiver<String>, socket_path: String, config: Config) {
                     value_prefix, value, cycle_icon
                 )),
                 tooltip.as_str(),
-                &class,
+                class,
             )
         );
 
@@ -454,35 +455,36 @@ mod tests {
     #[test]
     fn test_process_message_set_work() {
         let mut timer = create_timer();
-        process_message(&mut timer, &Message::new("set-work", 30).encode());
+        process_message(&mut timer, r#"{"set-work":{"value":30,"is_delta":false}}"#);
         assert_eq!(get_time(&timer, CycleType::Work), 30 * MINUTE);
     }
 
     #[test]
     fn test_process_message_set_short() {
         let mut timer = create_timer();
-        process_message(&mut timer, &Message::new("set-short", 3).encode());
+        process_message(&mut timer, r#"{"set-short":{"value":3,"is_delta":false}}"#);
         assert_eq!(get_time(&timer, CycleType::ShortBreak), 3 * MINUTE);
     }
 
     #[test]
     fn test_process_message_set_long() {
         let mut timer = create_timer();
-        process_message(&mut timer, &Message::new("set-long", 10).encode());
+        process_message(&mut timer, r#"{"set-long":{"value":10,"is_delta":false}}"#);
         assert_eq!(get_time(&timer, CycleType::LongBreak), 10 * MINUTE);
     }
 
     #[test]
     fn test_process_message_start() {
         let mut timer = create_timer();
-        process_message(&mut timer, "start");
+        process_message(&mut timer, r#""start""#);
         assert!(timer.running);
     }
 
     #[test]
     fn test_process_message_stop() {
         let mut timer = create_timer();
-        process_message(&mut timer, "stop");
+        timer.running = true;
+        process_message(&mut timer, r#""stop""#);
         assert!(!timer.running);
     }
 
@@ -492,24 +494,20 @@ mod tests {
 
         // Test setting current work time
         timer.current_index = 0;
-        let msg = r#"{"SetCurrent":{"value":30,"is_delta":false}}"#;
-        process_message(&mut timer, msg);
+        process_message(&mut timer, r#"{"set-current":{"value":30,"is_delta":false}}"#);
         assert_eq!(timer.times[0], 30 * 60);
 
         // Test setting current break time
         timer.current_index = 1;
-        let msg = r#"{"SetCurrent":{"value":10,"is_delta":false}}"#;
-        process_message(&mut timer, msg);
+        process_message(&mut timer, r#"{"set-current":{"value":10,"is_delta":false}}"#);
         assert_eq!(timer.times[1], 10 * 60);
 
         // Test delta on current
-        let msg = r#"{"SetCurrent":{"value":5,"is_delta":true}}"#;
-        process_message(&mut timer, msg);
+        process_message(&mut timer, r#"{"set-current":{"value":5,"is_delta":true}}"#);
         assert_eq!(timer.times[1], 15 * 60);
 
         // Test negative delta
-        let msg = r#"{"SetCurrent":{"value":-2,"is_delta":true}}"#;
-        process_message(&mut timer, msg);
+        process_message(&mut timer, r#"{"set-current":{"value":-2,"is_delta":true}}"#);
         assert_eq!(timer.times[1], 13 * 60);
     }
 
