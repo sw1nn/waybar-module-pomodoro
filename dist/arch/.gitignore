@@ -1,0 +1,4 @@
+src/
+pkg/
+waybar-module-pomodoro-git/
+*.tar.zst
