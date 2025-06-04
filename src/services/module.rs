@@ -345,13 +345,7 @@ pub fn get_existing_sockets(binary_name: &str) -> Vec<PathBuf> {
     let mut files: Vec<PathBuf> = vec![];
 
     // Use XDG runtime directory for socket discovery
-    let xdg_dirs = match BaseDirectories::with_prefix(binary_name) {
-        Ok(dirs) => dirs,
-        Err(e) => {
-            warn!("Failed to get XDG base directories: {}", e);
-            return files;
-        }
-    };
+    let xdg_dirs = BaseDirectories::with_prefix(binary_name);
 
     debug!("Looking for socket files using XDG list_runtime_files");
 

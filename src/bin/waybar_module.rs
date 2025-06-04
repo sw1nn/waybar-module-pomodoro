@@ -1,7 +1,4 @@
 use clap::Parser;
-use waybar_module_pomodoro::cli::{ModuleCli, LogOption};
-use waybar_module_pomodoro::models::config::Config;
-use waybar_module_pomodoro::services::module::{send_message_socket, spawn_module, find_next_instance_number};
 use signal_hook::{
     consts::{SIGHUP, SIGINT, SIGTERM},
     iterator::Signals,
@@ -9,6 +6,11 @@ use signal_hook::{
 use std::thread;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
+use waybar_module_pomodoro::cli::{LogOption, ModuleCli};
+use waybar_module_pomodoro::models::config::Config;
+use waybar_module_pomodoro::services::module::{
+    find_next_instance_number, send_message_socket, spawn_module,
+};
 use xdg::BaseDirectories;
 
 fn setup_tracing(log_option: Option<LogOption>) {
@@ -68,15 +70,14 @@ fn main() -> std::io::Result<()> {
     let config = Config::from_module_cli(&cli);
 
     // Use XDG runtime directory for socket
-    let xdg_dirs = BaseDirectories::with_prefix("waybar-module-pomodoro")
-        .expect("Failed to get XDG base directories");
+    let xdg_dirs = BaseDirectories::with_prefix("waybar-module-pomodoro");
 
     // Determine instance number
     let instance = match cli.instance {
         Some(num) => num,
-        None => find_next_instance_number("waybar-module-pomodoro")
+        None => find_next_instance_number("waybar-module-pomodoro"),
     };
-    
+
     let socket_filename = format!("module{}.socket", instance);
     let socket_path = xdg_dirs
         .place_runtime_file(&socket_filename)
