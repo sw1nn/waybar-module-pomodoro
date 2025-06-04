@@ -476,7 +476,8 @@ mod tests {
     #[test]
     fn test_process_message_start() {
         let mut timer = create_timer();
-        process_message(&mut timer, r#""start""#);
+        // Test backward compatibility - plain string should work
+        process_message(&mut timer, "start");
         assert!(timer.running);
     }
 
@@ -484,7 +485,8 @@ mod tests {
     fn test_process_message_stop() {
         let mut timer = create_timer();
         timer.running = true;
-        process_message(&mut timer, r#""stop""#);
+        // Test backward compatibility - plain string should work
+        process_message(&mut timer, "stop");
         assert!(!timer.running);
     }
 

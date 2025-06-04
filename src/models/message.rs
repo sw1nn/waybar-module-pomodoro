@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json;
+use tracing::debug;
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -18,7 +19,17 @@ pub enum Message {
 
 impl Message {
     pub fn decode(input: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(input)
+        // First try to parse as-is
+        match serde_json::from_str(input) {
+            Ok(msg) => Ok(msg),
+            Err(first_error) => {
+                // If it fails, try wrapping in quotes (for simple commands like "start", allow
+                // trailing whitespace (like \n)
+                let quoted = format!("\"{}\"", input.trim());
+                debug!(quoted, "Trying again");
+                serde_json::from_str(&quoted).map_err(|_| first_error)
+            }
+        }
     }
 
     pub fn encode(&self) -> String {
@@ -106,6 +117,26 @@ mod tests {
                 is_delta: true
             }
         );
+    }
+
+    #[test]
+    fn test_decode_backward_compat() {
+        // Test that plain strings are accepted for simple commands
+        assert_eq!(Message::decode("start").unwrap(), Message::Start);
+        assert_eq!(Message::decode("stop").unwrap(), Message::Stop);
+        assert_eq!(Message::decode("toggle").unwrap(), Message::Toggle);
+        assert_eq!(Message::decode("reset").unwrap(), Message::Reset);
+
+        // Test with trailing whitespace (like from echo)
+        assert_eq!(Message::decode("start\n").unwrap(), Message::Start);
+        assert_eq!(Message::decode("stop\n").unwrap(), Message::Stop);
+        assert_eq!(Message::decode("toggle\n").unwrap(), Message::Toggle);
+        assert_eq!(Message::decode("reset\n").unwrap(), Message::Reset);
+        assert_eq!(Message::decode("  start  \n").unwrap(), Message::Start);
+
+        // Invalid commands should still fail
+        assert!(Message::decode("invalid").is_err());
+        assert!(Message::decode("invalid\n").is_err());
     }
 
     #[test]
