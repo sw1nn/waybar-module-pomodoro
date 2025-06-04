@@ -1,6 +1,6 @@
 pkgname=waybar-module-pomodoro-git
 _pkgname=waybar-module-pomodoro
-pkgver=r123.226a207
+pkgver=0.3.0
 pkgrel=1
 pkgdesc='A waybar module to show a pomodoro timer'
 arch=('x86_64')
@@ -16,7 +16,8 @@ options=(strip !debug)
 
 pkgver() {
   cd ${pkgname}
-  printf "r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+  cargo_version=$(taplo get package.version <Cargo.toml)
+  printf "${cargo_version}_r%s.%s" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
 }
 
 prepare() {
