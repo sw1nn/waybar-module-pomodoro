@@ -7,12 +7,9 @@ use waybar_module_pomodoro::control_cli::{ControlCli, Operation};
 use waybar_module_pomodoro::services::module::{get_existing_sockets, send_message_socket};
 
 fn setup_tracing() {
-    // Client: log to console
+    // Client: log to console, respecting RUST_LOG environment variable
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive("waybar_module_pomodoro=debug".parse().unwrap()),
-        )
+        .with_env_filter(EnvFilter::from_default_env())
         .init();
 }
 
@@ -27,8 +24,25 @@ fn main() -> std::io::Result<()> {
         .unwrap_or_else(|| "waybar-module-pomodoro".to_string())
         .replace("-ctl", ""); // Remove -ctl to match module socket names
 
-    let sockets = get_existing_sockets(&binary_name);
+    let mut sockets = get_existing_sockets(&binary_name);
     debug!("Found {} existing sockets", sockets.len());
+
+    // Filter by instance if specified
+    if let Some(instance) = cli.instance {
+        let target_socket_name = format!("module{}.socket", instance);
+        sockets.retain(|socket| {
+            socket.file_name()
+                .and_then(|name| name.to_str())
+                .map(|name| name == target_socket_name)
+                .unwrap_or(false)
+        });
+        
+        if sockets.is_empty() {
+            eprintln!("No running waybar-module-pomodoro instance {} found", instance);
+            return Ok(());
+        }
+        debug!("Targeting instance {}", instance);
+    }
 
     if sockets.is_empty() {
         eprintln!("No running waybar-module-pomodoro module found");

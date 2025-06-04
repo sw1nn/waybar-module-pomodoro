@@ -7,47 +7,67 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-fn validate_log_file_path(path: &str) -> Result<PathBuf, String> {
-    let path_buf = PathBuf::from(path);
+#[derive(Debug, Clone)]
+pub enum LogOption {
+    Journald,
+    File { path: PathBuf },
+}
 
-    // Get the parent directory, defaulting to current directory if none specified
-    let parent_dir = match path_buf.parent() {
-        Some(dir) if !dir.as_os_str().is_empty() => dir.to_path_buf(),
-        _ => env::current_dir().map_err(|e| format!("Cannot get current directory: {}", e))?,
-    };
+impl std::str::FromStr for LogOption {
+    type Err = String;
 
-    // Check if parent directory exists
-    if !parent_dir.exists() {
-        return Err(format!(
-            "Directory does not exist: {}",
-            parent_dir.display()
-        ));
-    }
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s == "journald" || s.is_empty() {
+            Ok(LogOption::Journald)
+        } else {
+            // Validate the file path
+            let path_buf = PathBuf::from(s);
 
-    // Check if parent directory is writable
-    match fs::metadata(&parent_dir) {
-        Ok(metadata) => {
-            if metadata.permissions().readonly() {
+            // Get the parent directory, defaulting to current directory if none specified
+            let parent_dir = match path_buf.parent() {
+                Some(dir) if !dir.as_os_str().is_empty() => dir.to_path_buf(),
+                _ => env::current_dir()
+                    .map_err(|e| format!("Cannot get current directory: {}", e))?,
+            };
+
+            // Check if parent directory exists
+            if !parent_dir.exists() {
                 return Err(format!(
-                    "Directory is not writable: {}",
+                    "Directory does not exist: {}",
                     parent_dir.display()
                 ));
             }
-        }
-        Err(e) => {
-            return Err(format!(
-                "Cannot access directory {}: {}",
-                parent_dir.display(),
-                e
-            ));
-        }
-    }
 
-    // Return the full path, using current directory if no directory was specified
-    if path_buf.parent().is_none() || path_buf.parent().unwrap().as_os_str().is_empty() {
-        Ok(parent_dir.join(path))
-    } else {
-        Ok(path_buf)
+            // Check if parent directory is writable
+            match fs::metadata(&parent_dir) {
+                Ok(metadata) => {
+                    if metadata.permissions().readonly() {
+                        return Err(format!(
+                            "Directory is not writable: {}",
+                            parent_dir.display()
+                        ));
+                    }
+                }
+                Err(e) => {
+                    return Err(format!(
+                        "Cannot access directory {}: {}",
+                        parent_dir.display(),
+                        e
+                    ));
+                }
+            }
+
+            // Return the full path
+            let full_path = if path_buf.parent().is_none()
+                || path_buf.parent().unwrap().as_os_str().is_empty()
+            {
+                parent_dir.join(&path_buf)
+            } else {
+                path_buf
+            };
+
+            Ok(LogOption::File { path: full_path })
+        }
     }
 }
 
@@ -152,7 +172,11 @@ pub struct ModuleCli {
     #[arg(long = "with-notifications", help = "Enable desktop notifications")]
     pub with_notifications: bool,
 
-    /// Specify log file path
-    #[arg(long = "log-file", value_name = "path", value_parser = validate_log_file_path, help = "Specify log file path. Default: /tmp/waybar-pomodoro.log")]
-    pub log_file: Option<PathBuf>,
+    /// Enable logging to file or journald
+    #[arg(long = "log", value_name = "destination", num_args = 0..=1, default_missing_value = "journald", help = "Enable logging. Optionally specify a log file path. If no path is provided, logs to journald")]
+    pub log: Option<LogOption>,
+    
+    /// Specify instance number (defaults to next available)
+    #[arg(short = 'i', long = "instance", value_name = "NUM")]
+    pub instance: Option<u16>,
 }
