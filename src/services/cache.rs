@@ -1,4 +1,12 @@
-use std::{env, error::Error, fs::File, io::Write, path::PathBuf};
+use std::{
+    env,
+    error::Error,
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+};
+
+use tracing::error;
 
 use crate::models::config::Config;
 
@@ -15,6 +23,14 @@ pub fn store(state: &Timer) -> Result<(), Box<dyn Error>> {
     store_to_path(state, &filepath)
 }
 
+pub fn restore(state: &mut Timer, config: &Config) -> Result<(), Box<dyn Error>> {
+    let mut filepath = cache_dir()?;
+    let output_name = format!("{MODULE}-{VERSION}");
+    filepath.push(output_name);
+
+    restore_from_path(state, config, &filepath)
+}
+
 fn store_to_path(state: &Timer, filepath: &std::path::Path) -> Result<(), Box<dyn Error>> {
     let data = serde_json::to_string(&state).expect("Not a serializable type");
     Ok(File::create(filepath)?.write_all(data.as_bytes())?)
@@ -23,7 +39,7 @@ fn store_to_path(state: &Timer, filepath: &std::path::Path) -> Result<(), Box<dy
 fn restore_from_path(
     state: &mut Timer,
     config: &Config,
-    filepath: &std::path::Path,
+    filepath: &Path,
 ) -> Result<(), Box<dyn Error>> {
     let mut file = File::open(filepath)?;
     let mut content = String::new();
@@ -42,14 +58,6 @@ fn restore_from_path(
     }
 
     Ok(())
-}
-
-pub fn restore(state: &mut Timer, config: &Config) -> Result<(), Box<dyn Error>> {
-    let mut filepath = cache_dir()?;
-    let output_name = format!("{MODULE}-{VERSION}");
-    filepath.push(output_name);
-
-    restore_from_path(state, config, &filepath)
 }
 
 fn match_timers(config: &Config, times: &[u16; 3]) -> bool {
@@ -76,7 +84,7 @@ fn cache_dir() -> Result<PathBuf, Box<dyn Error>> {
 
     dir.push(MODULE);
     if let Err(e) = std::fs::create_dir_all(&dir) {
-        println!("create_dir: path == {:?}, err == {e}", dir);
+        error!("create_dir: path == {dir:?}, err == {e}");
     }
     Ok(dir)
 }

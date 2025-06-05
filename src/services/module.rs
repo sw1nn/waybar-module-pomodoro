@@ -214,8 +214,8 @@ fn process_message(state: &mut Timer, message: &str, config: &Config) {
 
 /// Extract socket number from a socket path by looking only at the filename
 /// Only matches numbers at the end of the base filename (before extension)
-fn extract_socket_number(socket_path: &str) -> i32 {
-    std::path::Path::new(socket_path)
+fn extract_socket_number(socket_path: &Path) -> i32 {
+    socket_path
         .file_stem() // without extension
         .and_then(|name| name.to_str())
         .and_then(|name| {
@@ -227,8 +227,9 @@ fn extract_socket_number(socket_path: &str) -> i32 {
         .unwrap_or(0)
 }
 
-fn handle_client(rx: Receiver<String>, socket_path: String, config: Config) {
-    let socket_nr = extract_socket_number(&socket_path);
+fn handle_client(rx: Receiver<String>, socket_path: impl AsRef<Path>, config: Config) {
+    let socket_path = socket_path.as_ref();
+    let socket_nr = extract_socket_number(socket_path);
 
     let mut state = Timer::new(
         config.work_time,
@@ -282,17 +283,17 @@ fn handle_client(rx: Receiver<String>, socket_path: String, config: Config) {
     }
 }
 
-fn delete_socket(socket_path: &str) {
-    if Path::new(&socket_path).exists() {
+fn delete_socket(socket_path: &Path) {
+    if socket_path.exists() {
         fs::remove_file(socket_path).unwrap();
     }
 }
 
-pub fn spawn_module(socket_path: &str, config: Config) {
-    info!("Creating socket at: {}", socket_path);
+pub fn spawn_module(socket_path: impl AsRef<Path>, config: Config) {
+    let socket_path = socket_path.as_ref();
     delete_socket(socket_path);
 
-    let listener = UnixListener::bind(socket_path).unwrap();
+    let listener = UnixListener::bind(&socket_path).unwrap();
     info!("Socket bound successfully");
     let (tx, rx): (Sender<String>, Receiver<String>) = std::sync::mpsc::channel();
     {
