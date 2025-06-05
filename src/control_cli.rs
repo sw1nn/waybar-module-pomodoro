@@ -72,6 +72,8 @@ pub enum Operation {
         #[arg(value_parser = parse_time_value)]
         value: TimeValue,
     },
+    /// Move to the next state (skip current timer)
+    NextState,
 }
 
 impl Operation {
@@ -85,6 +87,7 @@ impl Operation {
             Operation::SetShort { value } => time_value_to_message(value, Some(CycleType::ShortBreak)),
             Operation::SetLong { value } => time_value_to_message(value, Some(CycleType::LongBreak)),
             Operation::SetCurrent { value } => time_value_to_message(value, None),
+            Operation::NextState => Message::NextState,
         }
     }
 }

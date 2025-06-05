@@ -10,6 +10,7 @@ pub enum Message {
     Stop,
     Toggle,
     Reset,
+    NextState,
     // Duration commands
     SetWork { value: i16, is_delta: bool },
     SetShort { value: i16, is_delta: bool },
@@ -126,12 +127,14 @@ mod tests {
         assert_eq!(Message::decode("stop").unwrap(), Message::Stop);
         assert_eq!(Message::decode("toggle").unwrap(), Message::Toggle);
         assert_eq!(Message::decode("reset").unwrap(), Message::Reset);
+        assert_eq!(Message::decode("next-state").unwrap(), Message::NextState);
 
         // Test with trailing whitespace (like from echo)
         assert_eq!(Message::decode("start\n").unwrap(), Message::Start);
         assert_eq!(Message::decode("stop\n").unwrap(), Message::Stop);
         assert_eq!(Message::decode("toggle\n").unwrap(), Message::Toggle);
         assert_eq!(Message::decode("reset\n").unwrap(), Message::Reset);
+        assert_eq!(Message::decode("next-state\n").unwrap(), Message::NextState);
         assert_eq!(Message::decode("  start  \n").unwrap(), Message::Start);
 
         // Invalid commands should still fail
@@ -159,6 +162,7 @@ mod tests {
         assert_eq!(Message::Stop.encode(), r#""stop""#);
         assert_eq!(Message::Toggle.encode(), r#""toggle""#);
         assert_eq!(Message::Reset.encode(), r#""reset""#);
+        assert_eq!(Message::NextState.encode(), r#""next-state""#);
     }
 
     #[test]
@@ -168,6 +172,7 @@ mod tests {
             Message::Stop,
             Message::Toggle,
             Message::Reset,
+            Message::NextState,
             Message::SetWork {
                 value: 25,
                 is_delta: false,

@@ -142,7 +142,7 @@ fn create_message(value: String, tooltip: &str, class: &str) -> String {
     )
 }
 
-fn process_message(state: &mut Timer, message: &str) {
+fn process_message(state: &mut Timer, message: &str, config: &Config) {
     debug!("process_message called with: '{}'", message);
     
     match Message::decode(message) {
@@ -168,6 +168,10 @@ fn process_message(state: &mut Timer, message: &str) {
                 Message::Reset => {
                     debug!("Resetting timer");
                     state.reset();
+                }
+                Message::NextState => {
+                    debug!("Moving to next state");
+                    state.next_state(config);
                 }
                 // Duration commands
                 Message::SetWork { value, is_delta } => {
@@ -238,7 +242,7 @@ fn handle_client(rx: Receiver<String>, socket_path: String, config: Config) {
     loop {
         if let Ok(message) = rx.try_recv() {
             debug!("Processing message: '{}'", message);
-            process_message(&mut state, &message);
+            process_message(&mut state, &message, &config);
         }
 
         let value = format_time(state.elapsed_time, state.get_current_time());
@@ -455,21 +459,24 @@ mod tests {
     #[test]
     fn test_process_message_set_work() {
         let mut timer = create_timer();
-        process_message(&mut timer, r#"{"set-work":{"value":30,"is_delta":false}}"#);
+        let config = Config::default();
+        process_message(&mut timer, r#"{"set-work":{"value":30,"is_delta":false}}"#, &config);
         assert_eq!(get_time(&timer, CycleType::Work), 30 * MINUTE);
     }
 
     #[test]
     fn test_process_message_set_short() {
         let mut timer = create_timer();
-        process_message(&mut timer, r#"{"set-short":{"value":3,"is_delta":false}}"#);
+        let config = Config::default();
+        process_message(&mut timer, r#"{"set-short":{"value":3,"is_delta":false}}"#, &config);
         assert_eq!(get_time(&timer, CycleType::ShortBreak), 3 * MINUTE);
     }
 
     #[test]
     fn test_process_message_set_long() {
         let mut timer = create_timer();
-        process_message(&mut timer, r#"{"set-long":{"value":10,"is_delta":false}}"#);
+        let config = Config::default();
+        process_message(&mut timer, r#"{"set-long":{"value":10,"is_delta":false}}"#, &config);
         assert_eq!(get_time(&timer, CycleType::LongBreak), 10 * MINUTE);
     }
 
@@ -477,7 +484,8 @@ mod tests {
     fn test_process_message_start() {
         let mut timer = create_timer();
         // Test backward compatibility - plain string should work
-        process_message(&mut timer, "start");
+        let config = Config::default();
+        process_message(&mut timer, "start", &config);
         assert!(timer.running);
     }
 
@@ -486,7 +494,8 @@ mod tests {
         let mut timer = create_timer();
         timer.running = true;
         // Test backward compatibility - plain string should work
-        process_message(&mut timer, "stop");
+        let config = Config::default();
+        process_message(&mut timer, "stop", &config);
         assert!(!timer.running);
     }
 
@@ -496,20 +505,21 @@ mod tests {
 
         // Test setting current work time
         timer.current_index = 0;
-        process_message(&mut timer, r#"{"set-current":{"value":30,"is_delta":false}}"#);
+        let config = Config::default();
+        process_message(&mut timer, r#"{"set-current":{"value":30,"is_delta":false}}"#, &config);
         assert_eq!(timer.times[0], 30 * 60);
 
         // Test setting current break time
         timer.current_index = 1;
-        process_message(&mut timer, r#"{"set-current":{"value":10,"is_delta":false}}"#);
+        process_message(&mut timer, r#"{"set-current":{"value":10,"is_delta":false}}"#, &config);
         assert_eq!(timer.times[1], 10 * 60);
 
         // Test delta on current
-        process_message(&mut timer, r#"{"set-current":{"value":5,"is_delta":true}}"#);
+        process_message(&mut timer, r#"{"set-current":{"value":5,"is_delta":true}}"#, &config);
         assert_eq!(timer.times[1], 15 * 60);
 
         // Test negative delta
-        process_message(&mut timer, r#"{"set-current":{"value":-2,"is_delta":true}}"#);
+        process_message(&mut timer, r#"{"set-current":{"value":-2,"is_delta":true}}"#, &config);
         assert_eq!(timer.times[1], 13 * 60);
     }
 

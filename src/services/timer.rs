@@ -208,6 +208,15 @@ impl Timer {
             self.elapsed_time += 1;
         }
     }
+
+    pub fn next_state(&mut self, config: &Config) {
+        // Skip to end of current timer
+        self.elapsed_time = self.times[self.current_index];
+        self.elapsed_millis = 0;
+        
+        // Trigger state transition
+        self.update_state(config);
+    }
 }
 
 #[cfg(test)]
@@ -351,5 +360,33 @@ mod tests {
         }
         assert_eq!(timer.elapsed_millis, 0);
         assert_eq!(timer.elapsed_time, 10);
+    }
+
+    #[test]
+    fn test_next_state() {
+        let mut timer = create_timer();
+        let config = Config::default();
+
+        // Test transitioning from work to short break
+        assert_eq!(timer.current_index, 0); // Work
+        timer.next_state(&config);
+        assert_eq!(timer.current_index, 1); // Short break
+        assert_eq!(timer.elapsed_time, 0);
+
+        // Test transitioning from short break to work
+        timer.next_state(&config);
+        assert_eq!(timer.current_index, 0); // Back to work
+        assert_eq!(timer.iterations, 1);
+
+        // Set up for long break transition
+        timer.iterations = MAX_ITERATIONS - 1;
+        timer.next_state(&config);
+        assert_eq!(timer.current_index, 2); // Long break
+
+        // Test transitioning from long break back to work
+        timer.next_state(&config);
+        assert_eq!(timer.current_index, 0); // Back to work
+        assert_eq!(timer.iterations, 0);
+        assert_eq!(timer.session_completed, 1); // One session completed
     }
 }
