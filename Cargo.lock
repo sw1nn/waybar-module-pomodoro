@@ -1832,6 +1832,7 @@ dependencies = [
  "serde",
  "serde_json",
  "signal-hook",
+ "tempfile",
  "tracing",
  "tracing-appender",
  "tracing-journald",
