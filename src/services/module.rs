@@ -507,20 +507,24 @@ mod tests {
         timer.current_index = 0;
         let config = Config::default();
         process_message(&mut timer, r#"{"set-current":{"time":"30"}}"#, &config);
-        assert_eq!(timer.times[0], 30 * 60);
+        assert_eq!(timer.get_current_time(), 30 * 60);
+        // Original time should remain unchanged
+        assert_eq!(timer.times[0], WORK_TIME);
 
         // Test setting current break time
         timer.current_index = 1;
         process_message(&mut timer, r#"{"set-current":{"time":"10"}}"#, &config);
-        assert_eq!(timer.times[1], 10 * 60);
+        assert_eq!(timer.get_current_time(), 10 * 60);
+        // Original time should remain unchanged
+        assert_eq!(timer.times[1], SHORT_BREAK_TIME);
 
         // Test delta on current
         process_message(&mut timer, r#"{"set-current":{"time":"+5"}}"#, &config);
-        assert_eq!(timer.times[1], 15 * 60);
+        assert_eq!(timer.get_current_time(), 15 * 60);
 
         // Test negative delta
         process_message(&mut timer, r#"{"set-current":{"time":"-2"}}"#, &config);
-        assert_eq!(timer.times[1], 13 * 60);
+        assert_eq!(timer.get_current_time(), 13 * 60);
     }
 
     // TODO:

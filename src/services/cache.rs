@@ -95,6 +95,7 @@ mod tests {
             session_completed: 8,
             running: false,
             socket_nr: 0,
+            current_override: None,
         }
     }
 
