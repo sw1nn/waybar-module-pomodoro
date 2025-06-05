@@ -9,7 +9,7 @@ const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub fn store(state: &Timer) -> Result<(), Box<dyn Error>> {
     let mut filepath = cache_dir()?;
-    let output_name = format!("{}-{}", MODULE, VERSION);
+    let output_name = format!("{MODULE}-{VERSION}");
     filepath.push(output_name);
 
     let data = serde_json::to_string(&state).expect("Not a serializable type");
@@ -18,7 +18,7 @@ pub fn store(state: &Timer) -> Result<(), Box<dyn Error>> {
 
 pub fn restore(state: &mut Timer, config: &Config) -> Result<(), Box<dyn Error>> {
     let mut filepath = cache_dir()?;
-    let output_name = format!("{}-{}", MODULE, VERSION);
+    let output_name = format!("{MODULE}-{VERSION}");
     filepath.push(output_name);
 
     let file = File::open(filepath)?;

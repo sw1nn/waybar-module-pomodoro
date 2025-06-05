@@ -128,7 +128,10 @@ impl Timer {
             }
         }
 
-        debug!("Current cycle adjusted by {} to {} seconds", delta_seconds, new_time);
+        debug!(
+            "Current cycle adjusted by {} to {} seconds",
+            delta_seconds, new_time
+        );
         println!("{:?}", self.times);
     }
 
@@ -161,7 +164,7 @@ impl Timer {
         if (self.get_current_time() - self.elapsed_time) == 0 {
             // Clear any override when transitioning to a new cycle
             self.current_override = None;
-            
+
             // if we're on the third iteration and first work, then we want a long break
             if self.current_index == 0 && self.iterations == MAX_ITERATIONS - 1 {
                 self.current_index = self.times.len() - 1;
@@ -208,7 +211,8 @@ impl Timer {
     }
 
     pub fn get_current_time(&self) -> u16 {
-        self.current_override.unwrap_or(self.times[self.current_index])
+        self.current_override
+            .unwrap_or(self.times[self.current_index])
     }
 
     pub fn increment_time(&mut self) {
@@ -223,7 +227,7 @@ impl Timer {
         // Skip to end of current timer
         self.elapsed_time = self.get_current_time();
         self.elapsed_millis = 0;
-        
+
         // Trigger state transition
         self.update_state(config);
     }

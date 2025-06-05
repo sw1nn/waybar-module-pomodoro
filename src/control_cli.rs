@@ -27,21 +27,13 @@ pub enum Operation {
     /// Reset timer to initial state
     Reset,
     /// Set new work time [supports: 25, 5+, 3-]
-    SetWork {
-        value: TimeValue,
-    },
+    SetWork { value: TimeValue },
     /// Set new short break time [supports: 5, 2+, 1-]
-    SetShort {
-        value: TimeValue,
-    },
+    SetShort { value: TimeValue },
     /// Set new long break time [supports: 15, 5+, 2-]
-    SetLong {
-        value: TimeValue,
-    },
+    SetLong { value: TimeValue },
     /// Set duration for current timer state [supports: 25, 5+, 3-]
-    SetCurrent {
-        value: TimeValue,
-    },
+    SetCurrent { value: TimeValue },
     /// Move to the next state (skip current timer)
     NextState,
 }
@@ -54,8 +46,12 @@ impl Operation {
             Operation::Stop => Message::Stop,
             Operation::Reset => Message::Reset,
             Operation::SetWork { value } => time_value_to_message(value, Some(CycleType::Work)),
-            Operation::SetShort { value } => time_value_to_message(value, Some(CycleType::ShortBreak)),
-            Operation::SetLong { value } => time_value_to_message(value, Some(CycleType::LongBreak)),
+            Operation::SetShort { value } => {
+                time_value_to_message(value, Some(CycleType::ShortBreak))
+            }
+            Operation::SetLong { value } => {
+                time_value_to_message(value, Some(CycleType::LongBreak))
+            }
             Operation::SetCurrent { value } => time_value_to_message(value, None),
             Operation::NextState => Message::NextState,
         }
@@ -64,9 +60,17 @@ impl Operation {
 
 fn time_value_to_message(value: &TimeValue, cycle_type: Option<CycleType>) -> Message {
     match cycle_type {
-        Some(CycleType::Work) => Message::SetWork { time: value.clone() },
-        Some(CycleType::ShortBreak) => Message::SetShort { time: value.clone() },
-        Some(CycleType::LongBreak) => Message::SetLong { time: value.clone() },
-        None => Message::SetCurrent { time: value.clone() },
+        Some(CycleType::Work) => Message::SetWork {
+            time: value.clone(),
+        },
+        Some(CycleType::ShortBreak) => Message::SetShort {
+            time: value.clone(),
+        },
+        Some(CycleType::LongBreak) => Message::SetLong {
+            time: value.clone(),
+        },
+        None => Message::SetCurrent {
+            time: value.clone(),
+        },
     }
 }

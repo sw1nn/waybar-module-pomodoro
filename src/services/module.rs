@@ -17,7 +17,10 @@ use tracing::{debug, info, warn};
 use xdg::BaseDirectories;
 
 use crate::{
-    models::{config::Config, message::{Message, TimeValue}},
+    models::{
+        config::Config,
+        message::{Message, TimeValue},
+    },
     utils::{
         self,
         consts::{HOUR, MINUTE, SLEEP_DURATION},
@@ -129,16 +132,15 @@ fn format_time(elapsed_time: u16, max_time: u16) -> String {
     let second = time % MINUTE;
 
     if hour > 0 {
-        return format!("{:02}:{:02}:{:02}", hour, minute, second);
+        return format!("{hour:02}:{minute:02}:{second:02}");
     }
 
-    format!("{:02}:{:02}", minute, second)
+    format!("{minute:02}:{second:02}")
 }
 
 fn create_message(value: String, tooltip: &str, class: &str) -> String {
     format!(
-        "{{\"text\": \"{}\", \"tooltip\": \"{}\", \"class\": \"{}\", \"alt\": \"{}\"}}",
-        value, tooltip, class, class
+        r#"{{"text": "{value}", "tooltip": "{tooltip}", "class": "{class}", "alt": "{class}"}}"#
     )
 }
 
@@ -160,7 +162,7 @@ fn handle_current_time_value(state: &mut Timer, time: &TimeValue) {
 
 fn process_message(state: &mut Timer, message: &str, config: &Config) {
     debug!("process_message called with: '{}'", message);
-    
+
     match Message::decode(message) {
         Ok(msg) => {
             debug!("Decoded message: {:?}", msg);
@@ -262,10 +264,7 @@ fn handle_client(rx: Receiver<String>, socket_path: String, config: Config) {
         println!(
             "{}",
             create_message(
-                utils::helper::trim_whitespace(&format!(
-                    "{} {} {}",
-                    value_prefix, value, cycle_icon
-                )),
+                utils::helper::trim_whitespace(&format!("{value_prefix} {value} {cycle_icon}")),
                 tooltip.as_str(),
                 class,
             )
@@ -450,8 +449,7 @@ mod tests {
 
         let result = create_message(message.to_string(), tooltip, class);
         let expected = format!(
-            "{{\"text\": \"{}\", \"tooltip\": \"{}\", \"class\": \"{}\", \"alt\": \"{}\"}}",
-            message, tooltip, class, class
+            r#"{{"text": "{message}", "tooltip": "{tooltip}", "class": "{class}", "alt": "{class}"}}"#,
         );
         assert!(result == expected);
     }

@@ -29,7 +29,7 @@ fn main() -> std::io::Result<()> {
 
     // Filter by instance if specified
     if let Some(instance) = cli.instance {
-        let target_socket_name = format!("module{}.socket", instance);
+        let target_socket_name = format!("module{instance}.socket");
         sockets.retain(|socket| {
             socket
                 .file_name()

@@ -77,7 +77,7 @@ fn main() -> std::io::Result<()> {
         None => find_next_instance_number("waybar-module-pomodoro"),
     };
 
-    let socket_filename = format!("module{}.socket", instance);
+    let socket_filename = format!("module{instance}.socket");
     let socket_path = xdg_dirs
         .place_runtime_file(&socket_filename)
         .expect("Failed to create socket path in runtime directory")
