@@ -1,6 +1,74 @@
-use serde::{Deserialize, Serialize};
+use regex::Regex;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json;
+use std::str::FromStr;
+use std::sync::LazyLock;
 use tracing::debug;
+
+static TIME_VALUE_REGEX: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"^([+-])?(\d+)([+-])?$").expect("Invalid regex for time value parsing")
+});
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TimeValue {
+    Set(u16),
+    Add(i16),
+    Subtract(i16),
+}
+
+impl FromStr for TimeValue {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let captures = TIME_VALUE_REGEX
+            .captures(s)
+            .ok_or_else(|| format!("Invalid time value format: {s}"))?;
+
+        let number_str = captures.get(2).unwrap().as_str();
+        let number: u16 = number_str
+            .parse()
+            .map_err(|_| format!("Invalid number: {number_str}"))?;
+
+        // Check for prefix and suffix
+        let prefix = captures.get(1).map(|m| m.as_str());
+        let suffix = captures.get(3).map(|m| m.as_str());
+
+        if prefix.is_some() && suffix.is_some() {
+            return Err(format!("Invalid time value format {s}"));
+        }
+
+        match prefix.or(suffix) {
+            Some("+") => Ok(TimeValue::Add(number as i16)),
+            Some("-") => Ok(TimeValue::Subtract(number as i16)),
+            None => Ok(TimeValue::Set(number)),
+            // This shouldn't happen with our regex, but just in case
+            _ => Err(format!("Invalid time value format: {s}")),
+        }
+    }
+}
+
+impl Serialize for TimeValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self {
+            TimeValue::Set(v) => serializer.serialize_str(&v.to_string()),
+            TimeValue::Add(v) => serializer.serialize_str(&format!("+{v}")),
+            TimeValue::Subtract(v) => serializer.serialize_str(&format!("-{v}")),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for TimeValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        TimeValue::from_str(&s).map_err(serde::de::Error::custom)
+    }
+}
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -12,10 +80,10 @@ pub enum Message {
     Reset,
     NextState,
     // Duration commands
-    SetWork { value: i16, is_delta: bool },
-    SetShort { value: i16, is_delta: bool },
-    SetLong { value: i16, is_delta: bool },
-    SetCurrent { value: i16, is_delta: bool },
+    SetWork { time: TimeValue },
+    SetShort { time: TimeValue },
+    SetLong { time: TimeValue },
+    SetCurrent { time: TimeValue },
 }
 
 impl Message {
@@ -43,79 +111,94 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_time_value_from_str() {
+        // Test absolute values
+        assert_eq!(TimeValue::from_str("25").unwrap(), TimeValue::Set(25));
+        assert_eq!(TimeValue::from_str("0").unwrap(), TimeValue::Set(0));
+        assert_eq!(TimeValue::from_str("999").unwrap(), TimeValue::Set(999));
+
+        // Test prefix notation
+        assert_eq!(TimeValue::from_str("+5").unwrap(), TimeValue::Add(5));
+        assert_eq!(TimeValue::from_str("-3").unwrap(), TimeValue::Subtract(3));
+
+        // Test suffix notation
+        assert_eq!(TimeValue::from_str("5+").unwrap(), TimeValue::Add(5));
+        assert_eq!(TimeValue::from_str("3-").unwrap(), TimeValue::Subtract(3));
+
+        // Test errors
+        assert!(TimeValue::from_str("").is_err());
+        assert!(TimeValue::from_str("abc").is_err());
+        assert!(TimeValue::from_str("+").is_err());
+        assert!(TimeValue::from_str("-").is_err());
+        assert!(TimeValue::from_str("+-5").is_err());
+        assert!(TimeValue::from_str("-+5").is_err());
+        assert!(TimeValue::from_str("+abc").is_err());
+        assert!(TimeValue::from_str("5+-").is_err());
+        assert!(TimeValue::from_str("+5+").is_err());
+        assert!(TimeValue::from_str("-5-").is_err());
+        assert!(TimeValue::from_str("++5").is_err());
+        assert!(TimeValue::from_str("--5").is_err());
+    }
+
+    #[test]
     fn test_encode_set_work() {
         let message = Message::SetWork {
-            value: 25,
-            is_delta: false,
+            time: TimeValue::Set(25),
         };
-        assert_eq!(
-            message.encode(),
-            r#"{"set-work":{"value":25,"is_delta":false}}"#
-        );
+        assert_eq!(message.encode(), r#"{"set-work":{"time":"25"}}"#);
     }
 
     #[test]
     fn test_encode_delta() {
         let message = Message::SetWork {
-            value: 5,
-            is_delta: true,
+            time: TimeValue::Add(5),
         };
-        assert_eq!(
-            message.encode(),
-            r#"{"set-work":{"value":5,"is_delta":true}}"#
-        );
+        assert_eq!(message.encode(), r#"{"set-work":{"time":"+5"}}"#);
 
         let message = Message::SetWork {
-            value: -5,
-            is_delta: true,
+            time: TimeValue::Subtract(5),
         };
-        assert_eq!(
-            message.encode(),
-            r#"{"set-work":{"value":-5,"is_delta":true}}"#
-        );
+        assert_eq!(message.encode(), r#"{"set-work":{"time":"-5"}}"#);
     }
 
     #[test]
     fn test_decode_set_work() {
-        let input = r#"{"set-work":{"value":25,"is_delta":false}}"#;
+        let input = r#"{"set-work":{"time":"25"}}"#;
         let result = Message::decode(input);
         assert!(result.is_ok());
         let message = result.unwrap();
         assert_eq!(
             message,
             Message::SetWork {
-                value: 25,
-                is_delta: false
+                time: TimeValue::Set(25)
             }
         );
     }
 
     #[test]
     fn test_decode_positive_delta() {
-        let input = r#"{"set-work":{"value":5,"is_delta":true}}"#;
+        let input = r#"{"set-work":{"time":"+5"}}"#;
         let result = Message::decode(input);
         assert!(result.is_ok());
         let message = result.unwrap();
         assert_eq!(
             message,
             Message::SetWork {
-                value: 5,
-                is_delta: true
+                time: TimeValue::Add(5)
             }
         );
     }
 
     #[test]
     fn test_decode_negative_delta() {
-        let input = r#"{"set-work":{"value":-5,"is_delta":true}}"#;
+        let input = r#"{"set-work":{"time":"-5"}}"#;
         let result = Message::decode(input);
         assert!(result.is_ok());
         let message = result.unwrap();
         assert_eq!(
             message,
             Message::SetWork {
-                value: -5,
-                is_delta: true
+                time: TimeValue::Subtract(5)
             }
         );
     }
@@ -166,6 +249,88 @@ mod tests {
     }
 
     #[test]
+    fn test_decode_string_values_prefix() {
+        // Test prefix notation (+5, -5)
+        let input = r#"{"set-work":{"time":"+5"}}"#;
+        let result = Message::decode(input);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            Message::SetWork {
+                time: TimeValue::Add(5)
+            }
+        );
+
+        let input = r#"{"set-work":{"time":"-3"}}"#;
+        let result = Message::decode(input);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            Message::SetWork {
+                time: TimeValue::Subtract(3)
+            }
+        );
+
+        let input = r#"{"set-current":{"time":"+10"}}"#;
+        let result = Message::decode(input);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            Message::SetCurrent {
+                time: TimeValue::Add(10)
+            }
+        );
+    }
+
+    #[test]
+    fn test_decode_string_values_suffix() {
+        // Test suffix notation (5+, 3-)
+        let input = r#"{"set-work":{"time":"5+"}}"#;
+        let result = Message::decode(input);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            Message::SetWork {
+                time: TimeValue::Add(5)
+            }
+        );
+
+        let input = r#"{"set-short":{"time":"3-"}}"#;
+        let result = Message::decode(input);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            Message::SetShort {
+                time: TimeValue::Subtract(3)
+            }
+        );
+    }
+
+    #[test]
+    fn test_decode_string_values_absolute() {
+        // Test plain number strings
+        let input = r#"{"set-work":{"time":"25"}}"#;
+        let result = Message::decode(input);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            Message::SetWork {
+                time: TimeValue::Set(25)
+            }
+        );
+
+        let input = r#"{"set-long":{"time":"15"}}"#;
+        let result = Message::decode(input);
+        assert!(result.is_ok());
+        assert_eq!(
+            result.unwrap(),
+            Message::SetLong {
+                time: TimeValue::Set(15)
+            }
+        );
+    }
+
+    #[test]
     fn test_serde_roundtrip() {
         let messages = vec![
             Message::Start,
@@ -174,32 +339,25 @@ mod tests {
             Message::Reset,
             Message::NextState,
             Message::SetWork {
-                value: 25,
-                is_delta: false,
+                time: TimeValue::Set(25),
             },
             Message::SetShort {
-                value: 5,
-                is_delta: false,
+                time: TimeValue::Set(5),
             },
             Message::SetLong {
-                value: 15,
-                is_delta: false,
+                time: TimeValue::Set(15),
             },
             Message::SetWork {
-                value: 5,
-                is_delta: true,
+                time: TimeValue::Add(5),
             },
             Message::SetWork {
-                value: -5,
-                is_delta: true,
+                time: TimeValue::Subtract(5),
             },
             Message::SetCurrent {
-                value: 30,
-                is_delta: false,
+                time: TimeValue::Set(30),
             },
             Message::SetCurrent {
-                value: 5,
-                is_delta: true,
+                time: TimeValue::Add(5),
             },
         ];
 

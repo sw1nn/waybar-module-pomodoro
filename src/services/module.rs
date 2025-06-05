@@ -17,7 +17,7 @@ use tracing::{debug, info, warn};
 use xdg::BaseDirectories;
 
 use crate::{
-    models::{config::Config, message::Message},
+    models::{config::Config, message::{Message, TimeValue}},
     utils::{
         self,
         consts::{HOUR, MINUTE, SLEEP_DURATION},
@@ -142,6 +142,22 @@ fn create_message(value: String, tooltip: &str, class: &str) -> String {
     )
 }
 
+fn handle_time_value(state: &mut Timer, cycle: CycleType, time: &TimeValue) {
+    match time {
+        TimeValue::Set(minutes) => state.set_time(cycle, *minutes),
+        TimeValue::Add(delta) => state.add_delta_time(cycle, *delta),
+        TimeValue::Subtract(delta) => state.add_delta_time(cycle, -*delta),
+    }
+}
+
+fn handle_current_time_value(state: &mut Timer, time: &TimeValue) {
+    match time {
+        TimeValue::Set(minutes) => state.set_current_duration(*minutes),
+        TimeValue::Add(delta) => state.add_current_delta_time(*delta),
+        TimeValue::Subtract(delta) => state.add_current_delta_time(-*delta),
+    }
+}
+
 fn process_message(state: &mut Timer, message: &str, config: &Config) {
     debug!("process_message called with: '{}'", message);
     
@@ -174,33 +190,17 @@ fn process_message(state: &mut Timer, message: &str, config: &Config) {
                     state.next_state(config);
                 }
                 // Duration commands
-                Message::SetWork { value, is_delta } => {
-                    if is_delta {
-                        state.add_delta_time(CycleType::Work, value)
-                    } else {
-                        state.set_time(CycleType::Work, value as u16)
-                    }
+                Message::SetWork { time } => {
+                    handle_time_value(state, CycleType::Work, &time);
                 }
-                Message::SetShort { value, is_delta } => {
-                    if is_delta {
-                        state.add_delta_time(CycleType::ShortBreak, value)
-                    } else {
-                        state.set_time(CycleType::ShortBreak, value as u16)
-                    }
+                Message::SetShort { time } => {
+                    handle_time_value(state, CycleType::ShortBreak, &time);
                 }
-                Message::SetLong { value, is_delta } => {
-                    if is_delta {
-                        state.add_delta_time(CycleType::LongBreak, value)
-                    } else {
-                        state.set_time(CycleType::LongBreak, value as u16)
-                    }
+                Message::SetLong { time } => {
+                    handle_time_value(state, CycleType::LongBreak, &time);
                 }
-                Message::SetCurrent { value, is_delta } => {
-                    if is_delta {
-                        state.add_current_delta_time(value)
-                    } else {
-                        state.set_current_duration(value as u16)
-                    }
+                Message::SetCurrent { time } => {
+                    handle_current_time_value(state, &time);
                 }
             }
         }
@@ -460,7 +460,7 @@ mod tests {
     fn test_process_message_set_work() {
         let mut timer = create_timer();
         let config = Config::default();
-        process_message(&mut timer, r#"{"set-work":{"value":30,"is_delta":false}}"#, &config);
+        process_message(&mut timer, r#"{"set-work":{"time":"30"}}"#, &config);
         assert_eq!(get_time(&timer, CycleType::Work), 30 * MINUTE);
     }
 
@@ -468,7 +468,7 @@ mod tests {
     fn test_process_message_set_short() {
         let mut timer = create_timer();
         let config = Config::default();
-        process_message(&mut timer, r#"{"set-short":{"value":3,"is_delta":false}}"#, &config);
+        process_message(&mut timer, r#"{"set-short":{"time":"3"}}"#, &config);
         assert_eq!(get_time(&timer, CycleType::ShortBreak), 3 * MINUTE);
     }
 
@@ -476,7 +476,7 @@ mod tests {
     fn test_process_message_set_long() {
         let mut timer = create_timer();
         let config = Config::default();
-        process_message(&mut timer, r#"{"set-long":{"value":10,"is_delta":false}}"#, &config);
+        process_message(&mut timer, r#"{"set-long":{"time":"10"}}"#, &config);
         assert_eq!(get_time(&timer, CycleType::LongBreak), 10 * MINUTE);
     }
 
@@ -506,20 +506,20 @@ mod tests {
         // Test setting current work time
         timer.current_index = 0;
         let config = Config::default();
-        process_message(&mut timer, r#"{"set-current":{"value":30,"is_delta":false}}"#, &config);
+        process_message(&mut timer, r#"{"set-current":{"time":"30"}}"#, &config);
         assert_eq!(timer.times[0], 30 * 60);
 
         // Test setting current break time
         timer.current_index = 1;
-        process_message(&mut timer, r#"{"set-current":{"value":10,"is_delta":false}}"#, &config);
+        process_message(&mut timer, r#"{"set-current":{"time":"10"}}"#, &config);
         assert_eq!(timer.times[1], 10 * 60);
 
         // Test delta on current
-        process_message(&mut timer, r#"{"set-current":{"value":5,"is_delta":true}}"#, &config);
+        process_message(&mut timer, r#"{"set-current":{"time":"+5"}}"#, &config);
         assert_eq!(timer.times[1], 15 * 60);
 
         // Test negative delta
-        process_message(&mut timer, r#"{"set-current":{"value":-2,"is_delta":true}}"#, &config);
+        process_message(&mut timer, r#"{"set-current":{"time":"-2"}}"#, &config);
         assert_eq!(timer.times[1], 13 * 60);
     }
 
