@@ -11,4 +11,4 @@ pub const LONG_BREAK_TIME: u16 = 15 * MINUTE;
 pub const PLAY_ICON: &str = "▶";
 pub const PAUSE_ICON: &str = "⏸";
 pub const WORK_ICON: &str = "󰔟";
-pub const BREAK_ICON: &str = "";
+pub const BREAK_ICON: &str = "";
