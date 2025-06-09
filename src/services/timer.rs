@@ -160,7 +160,7 @@ impl Timer {
         }
     }
 
-    pub fn update_state(&mut self, config: &Config) {
+    pub fn update_state(&mut self, config: &Config, send_notifications: bool) {
         if (self.get_current_time() - self.elapsed_time) == 0 {
             // Clear any override when transitioning to a new cycle
             self.current_override = None;
@@ -193,8 +193,8 @@ impl Timer {
             // NOTE: the is_break() seems to be flipped..?
             self.running = (config.autob && self.is_break()) || (config.autow && !self.is_break());
 
-            // only send a notification for the first instance of the module
-            if self.socket_nr == 0 {
+            // only send a notification for the first instance of the module and if send_notifications is true
+            if self.socket_nr == 0 && send_notifications {
                 send_notification(
                     match self.current_index {
                         0 => CycleType::Work,
@@ -205,7 +205,7 @@ impl Timer {
                     config,
                 );
             } else {
-                debug!(socket_nr = self.socket_nr, "didn't send a notification");
+                debug!(socket_nr = self.socket_nr, send_notifications, "didn't send a notification");
             }
         }
     }
@@ -228,8 +228,8 @@ impl Timer {
         self.elapsed_time = self.get_current_time();
         self.elapsed_millis = 0;
 
-        // Trigger state transition
-        self.update_state(config);
+        // Trigger state transition without notifications
+        self.update_state(config, false);
     }
 }
 
@@ -335,7 +335,7 @@ mod tests {
             timer.increment_time();
             std::thread::sleep(SLEEP_DURATION);
         }
-        timer.update_state(&config);
+        timer.update_state(&config, false);
         assert_eq!(timer.current_index, 1); // Move to short break
 
         // Update state after short break is completed
@@ -343,7 +343,7 @@ mod tests {
             timer.increment_time();
             std::thread::sleep(SLEEP_DURATION);
         }
-        timer.update_state(&config);
+        timer.update_state(&config, false);
 
         // we need to trigger a long break
         timer.iterations = MAX_ITERATIONS - 1;
@@ -354,7 +354,7 @@ mod tests {
             std::thread::sleep(SLEEP_DURATION);
         }
 
-        timer.update_state(&config);
+        timer.update_state(&config, false);
         assert_eq!(timer.current_index, 2); // Move to long break
     }
 

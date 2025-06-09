@@ -261,7 +261,7 @@ fn handle_client(rx: Receiver<String>, socket_path: impl AsRef<Path>, config: Co
         );
         let class = state.get_class();
         let cycle_icon = config.get_cycle_icon(state.is_break());
-        state.update_state(&config);
+        state.update_state(&config, true);
         println!(
             "{}",
             create_message(
